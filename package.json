@@ -1,0 +1,47 @@
+{
+  "name": "nsm-performance-validator",
+  "version": "1.0.0",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n api,web \"tsx watch src/server/index.ts\" \"vite\"",
+    "build": "vite build",
+    "start": "tsx src/server/index.ts",
+    "sync": "tsx src/server/sync-cli.ts",
+    "db:generate": "drizzle-kit generate",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sour/NSMPerformanceValidator.git"
+  },
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/Sour/NSMPerformanceValidator/issues"
+  },
+  "homepage": "https://github.com/Sour/NSMPerformanceValidator#readme",
+  "dependencies": {
+    "@hono/node-server": "^2.1.5",
+    "better-sqlite3": "^13.0.3",
+    "drizzle-orm": "^0.45.4",
+    "hono": "^4.13.13",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "concurrently": "^10.0.6",
+    "drizzle-kit": "^0.31.11",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  },
+  "private": true
+}
