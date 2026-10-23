@@ -78,4 +78,18 @@ describe("matchActivities", () => {
     );
     expect(matches).toEqual([{ plannedWorkoutId: 7, activityId: "i7" }]);
   });
+
+  it("Matches trail and virtual runs like any other run", () => {
+    const matches = matchActivities(
+      [planned({ id: 8, date: "2026-10-24", name: "Long Run" }), planned({ id: 9, date: "2026-10-25" })],
+      [
+        activity({ id: "trail", date: "2026-10-24", type: "TrailRun" }),
+        activity({ id: "treadmill", date: "2026-10-25", type: "VirtualRun" }),
+      ],
+    );
+    expect(matches).toEqual([
+      { plannedWorkoutId: 8, activityId: "trail" },
+      { plannedWorkoutId: 9, activityId: "treadmill" },
+    ]);
+  });
 });

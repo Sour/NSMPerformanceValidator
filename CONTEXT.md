@@ -52,7 +52,7 @@ A run that was actually recorded by the watch.
 _Avoid_: Workout, session, run (when the recorded thing is meant)
 
 **Match**:
-The link between an Activity and the Planned Workout it fulfilled: either intervals.icu's own pairing or, failing that, the Planned Workout on the same day. Only Activities of type Run can be Matched.
+The link between an Activity and the Planned Workout it fulfilled: either intervals.icu's own pairing or, failing that, the Planned Workout on the same day. Only running Activities (intervals.icu types Run, TrailRun and VirtualRun) can be Matched.
 _Avoid_: Pairing (that is intervals.icu's mechanism, one way a Match is made)
 
 **Unplanned Run**:

@@ -24,9 +24,12 @@ export interface Match {
   activityId: string;
 }
 
-/** Only Activities of type Run can be Matched. */
+/** intervals.icu's running Activity types; treadmill runs are VirtualRun. */
+const RUNNING_TYPES = new Set(["Run", "TrailRun", "VirtualRun"]);
+
+/** Only running Activities can be Matched. */
 export function isRun(a: Pick<Activity, "type">): boolean {
-  return a.type === "Run";
+  return RUNNING_TYPES.has(a.type);
 }
 
 export function matchActivities(planned: PlannedWorkout[], activities: Activity[]): Match[] {
