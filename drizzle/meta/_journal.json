@@ -15,6 +15,13 @@
       "when": 1792794231123,
       "tag": "0001_sync_status",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792796081011,
+      "tag": "0002_rep_intervals",
+      "breakpoints": true
     }
   ]
 }

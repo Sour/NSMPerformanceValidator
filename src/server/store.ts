@@ -1,12 +1,12 @@
 import { and, asc, between, eq, notInArray } from "drizzle-orm";
-import { localDate } from "../domain/localDate";
 import type { Activity, PlannedWorkout } from "../domain/matching";
 import type { Db } from "./db";
 import { activities, plannedWorkouts, syncStatus } from "./db/schema";
-import type { IntervalsActivity, IntervalsEvent } from "./intervals";
+import { toActivity, toPlannedWorkout, type IntervalsActivity, type IntervalsEvent } from "./intervals";
 
 export type StoredPlannedWorkout = PlannedWorkout & { raw: unknown };
-export type StoredActivity = Activity & { distance: number | null; raw: unknown };
+/** `intervals` is intervals.icu's detected intervals response, or null when it was not fetched. */
+export type StoredActivity = Activity & { distance: number | null; raw: unknown; intervals: unknown };
 
 export type SyncStatus = Omit<typeof syncStatus.$inferSelect, "id">;
 
@@ -25,24 +25,19 @@ export interface SyncedData {
 /**
  * Makes the stored Planned Workouts and Activities dated within `window` exactly those given,
  * keyed by intervals.icu id, and records the sync as successful.
+ * `intervals` holds the detected intervals responses fetched for some of the Activities, by Activity id.
  */
 export function saveSync(
   db: Db,
   window: SyncWindow,
   events: IntervalsEvent[],
   runningActivities: IntervalsActivity[],
+  intervals: ReadonlyMap<string, unknown>,
   { finishedAt, syncedThrough }: SyncedData,
 ): void {
   db.transaction((tx) => {
     for (const e of events) {
-      const row = {
-        id: e.id,
-        date: localDate(e.start_date_local),
-        name: e.name,
-        pairedActivityId: e.paired_activity_id ?? null,
-        raw: e,
-        syncedAt: finishedAt,
-      };
+      const row = { ...toPlannedWorkout(e), raw: e, syncedAt: finishedAt };
       tx.insert(plannedWorkouts).values(row).onConflictDoUpdate({ target: plannedWorkouts.id, set: row }).run();
     }
     tx.delete(plannedWorkouts)
@@ -56,14 +51,10 @@ export function saveSync(
 
     for (const a of runningActivities) {
       const row = {
-        id: a.id,
-        date: localDate(a.start_date_local),
-        type: a.type,
-        name: a.name,
-        movingTime: a.moving_time ?? 0,
+        ...toActivity(a),
         distance: a.distance ?? null,
-        pairedEventId: a.paired_event_id ?? null,
         raw: a,
+        intervals: intervals.get(a.id) ?? null,
         syncedAt: finishedAt,
       };
       tx.insert(activities).values(row).onConflictDoUpdate({ target: activities.id, set: row }).run();
@@ -146,6 +137,7 @@ export function loadActivities(db: Db): StoredActivity[] {
       distance: activities.distance,
       pairedEventId: activities.pairedEventId,
       raw: activities.raw,
+      intervals: activities.intervals,
     })
     .from(activities)
     .orderBy(asc(activities.date), asc(activities.id))

@@ -41,7 +41,7 @@ describe("sync runner", () => {
 
   it("records a failed sync's error, keeping when the last successful one finished and what it synced through", async () => {
     const db = openDb(":memory:");
-    saveSync(db, { from: "2026-10-01", to: "2026-10-30" }, [], [], {
+    saveSync(db, { from: "2026-10-01", to: "2026-10-30" }, [], [], new Map(), {
       finishedAt: "2026-10-22T08:00:00.000Z",
       syncedThrough: "2026-10-22",
     });

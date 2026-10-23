@@ -32,7 +32,7 @@ function activity(id: string, date: string, type: string, extra: Partial<Interva
 
 type FakeClient = IntervalsClient & { requests: string[] };
 
-/** Serves the given data by date range, recording each request as "events oldest..newest". */
+/** Serves the given data by date range, recording each request as "events oldest..newest" or "intervals id". */
 function fakeClient(events: IntervalsEvent[], activities: IntervalsActivity[]): FakeClient {
   const requests: string[] = [];
   const within = (oldest: string, newest: string) => (x: { start_date_local: string }) =>
@@ -47,7 +47,15 @@ function fakeClient(events: IntervalsEvent[], activities: IntervalsActivity[]): 
       requests.push(`activities ${oldest}..${newest}`);
       return activities.filter(within(oldest, newest));
     },
+    intervals: async (activityId) => {
+      requests.push(`intervals ${activityId}`);
+      return intervalsResponse(activityId);
+    },
   };
+}
+
+function intervalsResponse(activityId: string) {
+  return { id: activityId, icu_intervals: [{ type: "WORK", moving_time: 360, gap: 3.2, average_heartrate: 165 }] };
 }
 
 const events = [
@@ -83,6 +91,17 @@ describe("sync", () => {
       pairedEventId: 2,
       raw: activities[2],
     });
+  });
+
+  it("stores the detected intervals of Matched Quality Runs only", async () => {
+    const db = openDb(":memory:");
+    const client = fakeClient(events, activities);
+    await sync(db, client, "2026-10-02");
+    expect(client.requests.filter((r) => r.startsWith("intervals"))).toEqual(["intervals i2"]);
+    expect(loadActivities(db).map((a) => [a.id, a.intervals])).toEqual([
+      ["i1", null],
+      ["i2", intervalsResponse("i2")],
+    ]);
   });
 
   it("is idempotent", async () => {
@@ -122,7 +141,10 @@ describe("sync", () => {
     await sync(db, fakeClient(events, activities), "2026-10-15");
     const client = fakeClient(events, activities);
     await sync(db, client, "2026-10-20");
-    expect(client.requests).toEqual(["events 2026-10-08..2026-11-17", "activities 2026-10-08..2026-10-21"]);
+    expect(client.requests.filter((r) => !r.startsWith("intervals"))).toEqual([
+      "events 2026-10-08..2026-11-17",
+      "activities 2026-10-08..2026-10-21",
+    ]);
   });
 
   it("never fetches from before the first [NSM] Planned Workout", async () => {
@@ -130,7 +152,11 @@ describe("sync", () => {
     await sync(db, fakeClient(events, activities), "2026-10-02");
     const client = fakeClient(events, activities);
     await sync(db, client, "2026-10-03");
-    expect(client.requests).toEqual(["events 2026-09-29..2026-10-31", "activities 2026-09-29..2026-10-04"]);
+    expect(client.requests).toEqual([
+      "events 2026-09-29..2026-10-31",
+      "activities 2026-09-29..2026-10-04",
+      "intervals i2",
+    ]);
   });
 
   it("keeps data from before the re-fetched window and stores what is new in it", async () => {

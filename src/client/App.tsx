@@ -1,23 +1,33 @@
 import { useEffect, useRef, useState } from "react";
-import type { SyncStatusResponse, WeekActivity, WeekResponse } from "../server/app";
+import type { ProgressResponse, SyncStatusResponse, WeekActivity, WeekResponse } from "../server/app";
+import { formatDate, formatDateTime } from "./format";
+import { RepCards } from "./RepCards";
 
 export function App() {
   const [week, setWeek] = useState<WeekResponse | null>(null);
+  const [progress, setProgress] = useState<ProgressResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const loadWeek = () => getJson<WeekResponse>("/api/week").then(setWeek);
+  const load = () =>
+    Promise.all([
+      getJson<WeekResponse>("/api/week").then(setWeek),
+      getJson<ProgressResponse>("/api/progress").then(setProgress),
+    ]).then(() => {});
 
   useEffect(() => {
-    loadWeek().catch((e: Error) => setError(e.message));
+    load().catch((e: Error) => setError(e.message));
   }, []);
 
-  if (error) return <main><p className="error">Could not load this Training Week: {error}</p></main>;
-  if (!week) return <main><p>Loading…</p></main>;
+  if (error) return <main><p className="error">Could not load: {error}</p></main>;
+  if (!week || !progress) return <main><p>Loading…</p></main>;
 
   return (
     <main>
-      <SyncBar onSynced={loadWeek} />
-      <h1>This Training Week</h1>
+      <SyncBar onSynced={load} />
+      <h1>Rep GAP</h1>
+      <RepCards cards={progress.cards} />
+
+      <h1 className="week-title">This Training Week</h1>
       <p className="range">
         {formatDate(week.start)} – {formatDate(week.end)}
       </p>
@@ -32,6 +42,7 @@ export function App() {
                 <span className={`status ${w.status.toLowerCase()}`}>{w.status}</span>
                 <span className="name">{w.plannedWorkout.name}</span>
                 {w.runType && <span className="run-type">{w.runType}</span>}
+                {w.completion && <span className={`completion ${w.completion.toLowerCase()}`}>{w.completion}</span>}
                 {w.activity && <ActivitySummary activity={w.activity} />}
               </div>
             ))}
@@ -131,16 +142,4 @@ async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return (await res.json()) as T;
-}
-
-function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
-}
-
-function formatDate(date: string, withWeekday = false): string {
-  return new Date(`${date}T00:00:00`).toLocaleDateString(undefined, {
-    weekday: withWeekday ? "short" : undefined,
-    day: "numeric",
-    month: "short",
-  });
 }

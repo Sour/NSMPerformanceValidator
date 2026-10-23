@@ -1,7 +1,14 @@
 import { addDays, localDate } from "../domain/localDate";
-import { isRun } from "../domain/matching";
+import { isRun, matchActivities } from "../domain/matching";
+import { runType } from "../domain/runType";
 import type { Db } from "./db";
-import type { IntervalsClient } from "./intervals";
+import {
+  toActivity,
+  toPlannedWorkout,
+  type IntervalsActivity,
+  type IntervalsClient,
+  type IntervalsEvent,
+} from "./intervals";
 import { loadPlannedWorkouts, loadSyncStatus, recordSyncWithNothingToStore, saveSync } from "./store";
 
 /** Marks a Planned Workout as part of the NSM plan, in its intervals.icu description. */
@@ -50,8 +57,22 @@ export async function sync(db: Db, client: IntervalsClient, today: string): Prom
   const planned = events.filter((e) => localDate(e.start_date_local) >= nsmStart);
   const runningActivities = (await client.activities(laterDate(from, nsmStart), addDays(today, 1))).filter(isRun);
 
-  saveSync(db, { from, to }, planned, runningActivities, { finishedAt: new Date().toISOString(), syncedThrough: today });
+  const intervals = new Map<string, unknown>();
+  for (const id of qualityRunActivityIds(planned, runningActivities)) intervals.set(id, await client.intervals(id));
+
+  saveSync(db, { from, to }, planned, runningActivities, intervals, {
+    finishedAt: new Date().toISOString(),
+    syncedThrough: today,
+  });
   return { nsmStart, plannedWorkouts: planned.length, activities: runningActivities.length };
+}
+
+/** The Activities Matched to a Quality Run, whose Reps are read from their detected intervals. */
+function qualityRunActivityIds(events: IntervalsEvent[], runningActivities: IntervalsActivity[]): string[] {
+  const planned = events.map(toPlannedWorkout);
+  return matchActivities(planned, runningActivities.map(toActivity))
+    .filter((m) => runType(planned.find((p) => p.id === m.plannedWorkoutId)!.name) === "Quality Run")
+    .map((m) => m.activityId);
 }
 
 function laterDate(a: string, b: string): string {

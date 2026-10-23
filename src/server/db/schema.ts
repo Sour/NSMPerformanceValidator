@@ -20,6 +20,8 @@ export const activities = sqliteTable("activities", {
   distance: real("distance"),
   pairedEventId: integer("paired_event_id"),
   raw: text("raw", { mode: "json" }).notNull(),
+  /** intervals.icu's detected intervals response; fetched for Matched Quality Runs only. */
+  intervals: text("intervals", { mode: "json" }),
   syncedAt: text("synced_at").notNull(),
 });
 
