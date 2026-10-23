@@ -1,0 +1,16 @@
+# Reference setup: `docker compose up` reads INTERVALS_ATHLETE_ID, INTERVALS_API_KEY and the
+# optional settings below from .env. Drop `build: .` to run the published image instead.
+services:
+  nsm:
+    image: ghcr.io/sour/nsmperformancevalidator:latest
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    volumes:
+      - "${DATA_DIR:-./data}:/data"
+    environment:
+      INTERVALS_ATHLETE_ID: ${INTERVALS_ATHLETE_ID:?set in .env}
+      INTERVALS_API_KEY: ${INTERVALS_API_KEY:?set in .env}
+      SYNC_INTERVAL: ${SYNC_INTERVAL:-30m}
+      TZ: ${TZ:-UTC}

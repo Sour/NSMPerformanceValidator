@@ -20,3 +20,6 @@ serve({ fetch: app.fetch, port: config.port }, ({ port }) => {
 
 void syncRunner.run();
 setInterval(() => void syncRunner.run(), config.syncInterval);
+
+// As PID 1 in a container, Node ignores stop signals unless it handles them.
+for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => process.exit(0));

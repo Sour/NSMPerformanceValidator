@@ -1,0 +1,8 @@
+.git
+.github
+.cache
+.env
+data
+dist
+node_modules
+docs
