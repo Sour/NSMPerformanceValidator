@@ -1,8 +1,13 @@
 import { Hono } from "hono";
-import { repLengthCards, type AnalysedActivity, type RepLengthCard } from "../domain/repProgress";
+import {
+  repLengthCards,
+  type AnalysedActivity,
+  type AnalysedPlannedWorkout,
+  type RepLengthCard,
+} from "../domain/repProgress";
 import { trainingWeek, type TrainingDay, type TrainingWeek, type WeekWorkout } from "../domain/trainingWeek";
 import type { Db } from "./db";
-import { detectedIntervals } from "./intervals";
+import { detectedIntervals, plannedRecovery } from "./intervals";
 import { loadActivities, loadPlannedWorkouts, loadSyncStatus, type StoredActivity } from "./store";
 import type { SyncRunner } from "./syncRunner";
 
@@ -41,11 +46,12 @@ export function createApp(db: Db, today: () => string, syncRunner: SyncRunner) {
   return new Hono()
     .get("/api/week", (c) => {
       const date = today();
-      const planned = loadPlannedWorkouts(db).map(({ raw: _, ...p }) => p);
+      const analysedPlanned = analysedPlannedWorkouts(db);
+      const planned = analysedPlanned.map(({ recovery: _, ...p }) => p);
       const analysed = analysedActivities(db);
       const activities = analysed.map(({ intervals: _, ...a }) => a);
       const week = trainingWeek(date, planned, activities);
-      const qualityRuns = repLengthCards(planned, analysed).flatMap((card) => card.runs);
+      const qualityRuns = repLengthCards(analysedPlanned, analysed).flatMap((card) => card.runs);
       const completion = (w: WeekWorkout<WeekActivity>): WeekWorkoutResponse["completion"] => {
         const run = qualityRuns.find((r) => r.activityId === w.activity?.id);
         if (!run) return null;
@@ -58,14 +64,18 @@ export function createApp(db: Db, today: () => string, syncRunner: SyncRunner) {
       });
     })
     .get("/api/progress", (c) => {
-      const planned = loadPlannedWorkouts(db).map(({ raw: _, ...p }) => p);
-      return c.json<ProgressResponse>({ cards: repLengthCards(planned, analysedActivities(db)) });
+      return c.json<ProgressResponse>({ cards: repLengthCards(analysedPlannedWorkouts(db), analysedActivities(db)) });
     })
     .get("/api/sync", (c) => c.json(syncStatus()))
     .post("/api/sync", async (c) => {
       await syncRunner.run();
       return c.json(syncStatus());
     });
+}
+
+/** Stored Planned Workouts without their raw response, with their planned recovery read. */
+function analysedPlannedWorkouts(db: Db): AnalysedPlannedWorkout[] {
+  return loadPlannedWorkouts(db).map(({ raw, ...p }) => ({ ...p, recovery: plannedRecovery(raw) }));
 }
 
 /** Stored Activities without their raw response, with their detected intervals read. */

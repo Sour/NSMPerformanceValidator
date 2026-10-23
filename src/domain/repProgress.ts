@@ -1,8 +1,11 @@
 import { matchActivities, type Activity, type PlannedWorkout } from "./matching";
-import { qualityRun, qualityRunFormat, type DetectedInterval, type QualityRunFormat } from "./qualityRun";
+import { heartRateCeiling, qualityRun, qualityRunFormat, type DetectedInterval, type QualityRunFormat } from "./qualityRun";
 
 /** An Activity with the intervals intervals.icu detected in it; null until they have been fetched. */
 export type AnalysedActivity = Activity & { intervals: DetectedInterval[] | null };
+
+/** A Planned Workout with the recovery between its Reps, in seconds, read from its structure; null when it has none. */
+export type AnalysedPlannedWorkout = PlannedWorkout & { recovery: number | null };
 
 /** One Matched Quality Run on a Rep Length card. */
 export interface RepLengthRun {
@@ -15,6 +18,22 @@ export interface RepLengthRun {
   /** Rep GAP as a grade-adjusted speed in metres per second; null without Reps. */
   repGap: number | null;
   repHr: number | null;
+  /** Efficiency in grade-adjusted metres per heartbeat; null without Reps that have both GAP and heart rate. */
+  efficiency: number | null;
+  /** The top of the Planned Workout's heart-rate target in bpm; null when it names none. */
+  hrCeiling: number | null;
+  /** A Rep's average heart rate exceeded `hrCeiling`. Over Target runs still count toward the trend. */
+  overTarget: boolean;
+  /** Planned seconds of recovery between Reps; null when the Planned Workout does not say. */
+  recovery: number | null;
+  /** How this run's rep count or recovery changed from the previous run with this Rep Length; null when neither did. */
+  formatChange: FormatChange | null;
+}
+
+/** What changed from the previous run with the same Rep Length: each field is the previous value, or null if unchanged. */
+export interface FormatChange {
+  reps: number | null;
+  recovery: number | null;
 }
 
 export interface RepLengthCard {
@@ -29,7 +48,7 @@ export interface RepLengthCard {
 }
 
 /** One card per Rep Length in the plan, longest first, tracking every Matched Quality Run with that Rep Length. */
-export function repLengthCards(planned: PlannedWorkout[], activities: AnalysedActivity[]): RepLengthCard[] {
+export function repLengthCards(planned: AnalysedPlannedWorkout[], activities: AnalysedActivity[]): RepLengthCard[] {
   const matches = matchActivities(planned, activities);
   const runs: RepLengthRun[] = [];
   for (const p of planned) {
@@ -37,7 +56,8 @@ export function repLengthCards(planned: PlannedWorkout[], activities: AnalysedAc
     const activityId = matches.find((m) => m.plannedWorkoutId === p.id)?.activityId;
     const intervals = activities.find((a) => a.id === activityId)?.intervals;
     if (!format || !activityId || !intervals) continue;
-    const run = qualityRun(format, intervals);
+    const hrCeiling = heartRateCeiling(p.name);
+    const run = qualityRun(format, intervals, hrCeiling);
     runs.push({
       date: p.date,
       activityId,
@@ -47,6 +67,11 @@ export function repLengthCards(planned: PlannedWorkout[], activities: AnalysedAc
       repsRun: run.reps.length,
       repGap: run.repGap,
       repHr: run.repHr,
+      efficiency: run.efficiency,
+      hrCeiling,
+      overTarget: run.overTarget,
+      recovery: p.recovery,
+      formatChange: null,
     });
   }
   runs.sort((a, b) => a.date.localeCompare(b.date));
@@ -55,8 +80,19 @@ export function repLengthCards(planned: PlannedWorkout[], activities: AnalysedAc
   return [...repLengths]
     .sort((a, b) => b - a)
     .map((repLength) => {
-      const ofLength = runs.filter((r) => r.format.repLength === repLength);
+      const ofLength = runs
+        .filter((r) => r.format.repLength === repLength)
+        .map((run, i, all) => ({ ...run, formatChange: formatChange(all[i - 1], run) }));
       const trend = ofLength.filter((r) => r.complete && r.repGap !== null);
       return { repLength, runs: ofLength, latest: trend.at(-1) ?? null, previous: trend.at(-2) ?? null };
     });
+}
+
+/** How `run` changed rep count or recovery from `previous`; a recovery that is unknown on either side is not a change. */
+function formatChange(previous: RepLengthRun | undefined, run: RepLengthRun): FormatChange | null {
+  if (!previous) return null;
+  const repsChanged = previous.format.reps !== run.format.reps;
+  const recoveryChanged = previous.recovery !== null && run.recovery !== null && previous.recovery !== run.recovery;
+  if (!repsChanged && !recoveryChanged) return null;
+  return { reps: repsChanged ? previous.format.reps : null, recovery: recoveryChanged ? previous.recovery : null };
 }

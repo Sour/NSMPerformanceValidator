@@ -49,6 +49,9 @@ describe("Quality Runs", () => {
       name: "4 x 6:00 at 163–177 bpm",
       description: "[NSM]",
       paired_activity_id: "i1",
+      workout_doc: {
+        steps: [{ reps: 4, steps: [{ duration: 360, intensity: "active" }, { duration: 90, intensity: "recovery" }] }],
+      },
     };
     const activity = {
       id: "i1",
@@ -92,7 +95,17 @@ describe("Quality Runs", () => {
     expect(progress.cards).toHaveLength(1);
     expect(progress.cards[0]).toMatchObject({
       repLength: 360,
-      latest: { date: "2026-10-21", complete: true, repsRun: 4, repGap: 3.2, repHr: 166 },
+      latest: {
+        date: "2026-10-21",
+        complete: true,
+        repsRun: 4,
+        repGap: 3.2,
+        repHr: 166,
+        hrCeiling: 177,
+        overTarget: false,
+        recovery: 90,
+        formatChange: null,
+      },
       previous: null,
     });
   });

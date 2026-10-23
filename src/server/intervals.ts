@@ -41,6 +41,24 @@ export function toActivity(a: IntervalsActivity): Activity {
   };
 }
 
+interface WorkoutStep {
+  reps?: number;
+  intensity?: string;
+  duration?: number;
+  steps?: WorkoutStep[];
+}
+
+/**
+ * The recovery between Reps, in seconds, read from an intervals.icu calendar event's `workout_doc`:
+ * the recovery step inside its first repeated block. Null when it has no such step.
+ */
+export function plannedRecovery(event: unknown): number | null {
+  const doc = (event as { workout_doc?: { steps?: WorkoutStep[] } | null } | null)?.workout_doc;
+  const steps = doc?.steps ?? [];
+  const recovery = steps.find((s) => s.reps !== undefined)?.steps?.find((s) => s.intensity === "recovery");
+  return typeof recovery?.duration === "number" ? recovery.duration : null;
+}
+
 /** The intervals intervals.icu detected in an Activity, read from its `GET /activity/{id}/intervals` response. */
 export function detectedIntervals(response: unknown): DetectedInterval[] {
   const intervals = (response as { icu_intervals?: Record<string, unknown>[] } | null)?.icu_intervals ?? [];
