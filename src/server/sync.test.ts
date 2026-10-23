@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { openDb } from "./db";
 import type { IntervalsActivity, IntervalsClient, IntervalsEvent } from "./intervals";
-import { loadActivities, loadPlannedWorkouts } from "./store";
+import { loadActivities, loadPlannedWorkouts, loadSyncStatus } from "./store";
 import { sync } from "./sync";
 
 function event(id: number, date: string, name: string, description = "[NSM]", extra: Partial<IntervalsEvent> = {}): IntervalsEvent {
@@ -30,12 +30,23 @@ function activity(id: string, date: string, type: string, extra: Partial<Interva
   };
 }
 
-function fakeClient(events: IntervalsEvent[], activities: IntervalsActivity[]): IntervalsClient {
+type FakeClient = IntervalsClient & { requests: string[] };
+
+/** Serves the given data by date range, recording each request as "events oldest..newest". */
+function fakeClient(events: IntervalsEvent[], activities: IntervalsActivity[]): FakeClient {
+  const requests: string[] = [];
   const within = (oldest: string, newest: string) => (x: { start_date_local: string }) =>
     x.start_date_local.slice(0, 10) >= oldest && x.start_date_local.slice(0, 10) <= newest;
   return {
-    events: async (oldest, newest) => events.filter(within(oldest, newest)),
-    activities: async (oldest, newest) => activities.filter(within(oldest, newest)),
+    requests,
+    events: async (oldest, newest) => {
+      requests.push(`events ${oldest}..${newest}`);
+      return events.filter(within(oldest, newest));
+    },
+    activities: async (oldest, newest) => {
+      requests.push(`activities ${oldest}..${newest}`);
+      return activities.filter(within(oldest, newest));
+    },
   };
 }
 
@@ -98,11 +109,56 @@ describe("sync", () => {
     expect(loadActivities(db)).toEqual([]);
   });
 
-  it("leaves stored data alone when a sync finds no [NSM] Planned Workout", async () => {
+  it("searches a year back until a Planned Workout is tagged [NSM]", async () => {
+    const db = openDb(":memory:");
+    const client = fakeClient([events[0]!], activities);
+    await sync(db, client, "2026-10-02");
+    await sync(db, client, "2026-10-03");
+    expect(client.requests).toEqual(["events 2025-10-02..2026-10-30", "events 2025-10-03..2026-10-31"]);
+  });
+
+  it("after a successful sync, only fetches from a week before it", async () => {
+    const db = openDb(":memory:");
+    await sync(db, fakeClient(events, activities), "2026-10-15");
+    const client = fakeClient(events, activities);
+    await sync(db, client, "2026-10-20");
+    expect(client.requests).toEqual(["events 2026-10-08..2026-11-17", "activities 2026-10-08..2026-10-21"]);
+  });
+
+  it("never fetches from before the first [NSM] Planned Workout", async () => {
     const db = openDb(":memory:");
     await sync(db, fakeClient(events, activities), "2026-10-02");
-    await sync(db, fakeClient([], []), "2026-10-02");
-    expect(loadPlannedWorkouts(db).map((p) => p.id)).toEqual([1, 2]);
-    expect(loadActivities(db).map((a) => a.id)).toEqual(["i1", "i2"]);
+    const client = fakeClient(events, activities);
+    await sync(db, client, "2026-10-03");
+    expect(client.requests).toEqual(["events 2026-09-29..2026-10-31", "activities 2026-09-29..2026-10-04"]);
+  });
+
+  it("keeps data from before the re-fetched window and stores what is new in it", async () => {
+    const db = openDb(":memory:");
+    await sync(db, fakeClient(events, activities), "2026-10-15");
+    const later = [event(4, "2026-10-21", "Easy Run")];
+    const laterRuns = [activity("i4", "2026-10-21", "Run")];
+    await sync(db, fakeClient(later, laterRuns), "2026-10-21");
+    expect(loadPlannedWorkouts(db).map((p) => p.id)).toEqual([1, 2, 4]);
+    expect(loadActivities(db).map((a) => a.id)).toEqual(["i1", "i2", "i4"]);
+  });
+
+  it("records when it last finished and through which date it synced", async () => {
+    const db = openDb(":memory:");
+    expect(loadSyncStatus(db)).toBeNull();
+    await sync(db, fakeClient(events, activities), "2026-10-02");
+    const status = loadSyncStatus(db);
+    expect(status).toEqual({
+      finishedAt: expect.any(String),
+      error: null,
+      succeededAt: status?.finishedAt,
+      syncedThrough: "2026-10-02",
+    });
+  });
+
+  it("records a sync that found no [NSM] Planned Workout without a synced-through date", async () => {
+    const db = openDb(":memory:");
+    await sync(db, fakeClient([events[0]!], activities), "2026-10-02");
+    expect(loadSyncStatus(db)).toMatchObject({ error: null, succeededAt: expect.any(String), syncedThrough: null });
   });
 });

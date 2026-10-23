@@ -3,10 +3,20 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { createApp } from "./app";
 import { config, localToday } from "./config";
 import { openDb } from "./db";
+import { createIntervalsClient } from "./intervals";
+import { sync } from "./sync";
+import { createSyncRunner } from "./syncRunner";
 
-const app = createApp(openDb(config.databasePath), localToday);
+const db = openDb(config.databasePath);
+const client = createIntervalsClient(config.athleteId, config.apiKey);
+const syncRunner = createSyncRunner(db, () => sync(db, client, localToday()));
+
+const app = createApp(db, localToday, syncRunner);
 app.use("/*", serveStatic({ root: "dist/client" }));
 
 serve({ fetch: app.fetch, port: config.port }, ({ port }) => {
   console.log(`NSM Performance Validator on http://localhost:${port}`);
 });
+
+void syncRunner.run();
+setInterval(() => void syncRunner.run(), config.syncInterval);

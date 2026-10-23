@@ -105,3 +105,35 @@ h2 {
 .error {
   color: var(--missed);
 }
+
+.sync {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px 12px;
+  margin-bottom: 16px;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.sync button {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.sync button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.sync .error {
+  flex-basis: 100%;
+  margin: 0;
+  text-align: right;
+}

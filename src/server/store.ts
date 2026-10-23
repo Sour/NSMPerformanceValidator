@@ -1,19 +1,37 @@
-import { asc, notInArray } from "drizzle-orm";
+import { and, asc, between, eq, notInArray } from "drizzle-orm";
 import { localDate } from "../domain/localDate";
 import type { Activity, PlannedWorkout } from "../domain/matching";
 import type { Db } from "./db";
-import { activities, plannedWorkouts } from "./db/schema";
+import { activities, plannedWorkouts, syncStatus } from "./db/schema";
 import type { IntervalsActivity, IntervalsEvent } from "./intervals";
 
 export type StoredPlannedWorkout = PlannedWorkout & { raw: unknown };
 export type StoredActivity = Activity & { distance: number | null; raw: unknown };
 
-/** Makes the stored Planned Workouts and Activities exactly those given, keyed by intervals.icu id. */
-export function replaceSyncedData(
+export type SyncStatus = Omit<typeof syncStatus.$inferSelect, "id">;
+
+/** Inclusive YYYY-MM-DD dates bounding what one sync fetched. */
+export interface SyncWindow {
+  from: string;
+  to: string;
+}
+
+/** A successful sync that stored data: when it finished, and the local date it synced through. */
+export interface SyncedData {
+  finishedAt: string;
+  syncedThrough: string;
+}
+
+/**
+ * Makes the stored Planned Workouts and Activities dated within `window` exactly those given,
+ * keyed by intervals.icu id, and records the sync as successful.
+ */
+export function saveSync(
   db: Db,
+  window: SyncWindow,
   events: IntervalsEvent[],
   runningActivities: IntervalsActivity[],
-  syncedAt: string,
+  { finishedAt, syncedThrough }: SyncedData,
 ): void {
   db.transaction((tx) => {
     for (const e of events) {
@@ -23,11 +41,18 @@ export function replaceSyncedData(
         name: e.name,
         pairedActivityId: e.paired_activity_id ?? null,
         raw: e,
-        syncedAt,
+        syncedAt: finishedAt,
       };
       tx.insert(plannedWorkouts).values(row).onConflictDoUpdate({ target: plannedWorkouts.id, set: row }).run();
     }
-    tx.delete(plannedWorkouts).where(notInArray(plannedWorkouts.id, events.map((e) => e.id))).run();
+    tx.delete(plannedWorkouts)
+      .where(
+        and(
+          between(plannedWorkouts.date, window.from, window.to),
+          notInArray(plannedWorkouts.id, events.map((e) => e.id)),
+        ),
+      )
+      .run();
 
     for (const a of runningActivities) {
       const row = {
@@ -39,12 +64,61 @@ export function replaceSyncedData(
         distance: a.distance ?? null,
         pairedEventId: a.paired_event_id ?? null,
         raw: a,
-        syncedAt,
+        syncedAt: finishedAt,
       };
       tx.insert(activities).values(row).onConflictDoUpdate({ target: activities.id, set: row }).run();
     }
-    tx.delete(activities).where(notInArray(activities.id, runningActivities.map((a) => a.id))).run();
+    tx.delete(activities)
+      .where(
+        and(
+          between(activities.date, window.from, window.to),
+          notInArray(activities.id, runningActivities.map((a) => a.id)),
+        ),
+      )
+      .run();
+
+    writeSyncStatus(tx, { finishedAt, error: null, succeededAt: finishedAt, syncedThrough });
   });
+}
+
+/** Records a sync that failed with `error`, keeping what the last successful one did. */
+export function recordSyncFailure(db: Db, finishedAt: string, error: string): void {
+  const last = loadSyncStatus(db);
+  writeSyncStatus(db, {
+    finishedAt,
+    error,
+    succeededAt: last?.succeededAt ?? null,
+    syncedThrough: last?.syncedThrough ?? null,
+  });
+}
+
+/** Records a successful sync that had nothing to store, because no Planned Workout is tagged [NSM] yet. */
+export function recordSyncWithNothingToStore(db: Db, finishedAt: string): void {
+  const last = loadSyncStatus(db);
+  writeSyncStatus(db, { finishedAt, error: null, succeededAt: finishedAt, syncedThrough: last?.syncedThrough ?? null });
+}
+
+const SYNC_STATUS_ID = 1;
+
+function writeSyncStatus(db: Pick<Db, "insert">, status: SyncStatus): void {
+  const row = { id: SYNC_STATUS_ID, ...status };
+  db.insert(syncStatus).values(row).onConflictDoUpdate({ target: syncStatus.id, set: row }).run();
+}
+
+/** The outcome of the latest sync, or null before the first one. */
+export function loadSyncStatus(db: Db): SyncStatus | null {
+  return (
+    db
+      .select({
+        finishedAt: syncStatus.finishedAt,
+        error: syncStatus.error,
+        succeededAt: syncStatus.succeededAt,
+        syncedThrough: syncStatus.syncedThrough,
+      })
+      .from(syncStatus)
+      .where(eq(syncStatus.id, SYNC_STATUS_ID))
+      .get() ?? null
+  );
 }
 
 export function loadPlannedWorkouts(db: Db): StoredPlannedWorkout[] {

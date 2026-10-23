@@ -22,3 +22,15 @@ export const activities = sqliteTable("activities", {
   raw: text("raw", { mode: "json" }).notNull(),
   syncedAt: text("synced_at").notNull(),
 });
+
+/** The outcome of the latest sync; a single row with id 1. */
+export const syncStatus = sqliteTable("sync_status", {
+  id: integer("id").primaryKey(),
+  finishedAt: text("finished_at").notNull(),
+  /** Why the latest sync failed; null when it succeeded. */
+  error: text("error"),
+  /** When the latest successful sync finished. */
+  succeededAt: text("succeeded_at"),
+  /** The local date of the last successful sync that stored data; later syncs re-fetch only from shortly before it. */
+  syncedThrough: text("synced_through"),
+});

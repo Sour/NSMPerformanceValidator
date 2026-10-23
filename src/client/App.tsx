@@ -1,14 +1,14 @@
-import { useEffect, useState } from "react";
-import type { WeekActivity, WeekResponse } from "../server/app";
+import { useEffect, useRef, useState } from "react";
+import type { SyncStatusResponse, WeekActivity, WeekResponse } from "../server/app";
 
 export function App() {
   const [week, setWeek] = useState<WeekResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const loadWeek = () => getJson<WeekResponse>("/api/week").then(setWeek);
+
   useEffect(() => {
-    fetch("/api/week")
-      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
-      .then(setWeek, (e: Error) => setError(e.message));
+    loadWeek().catch((e: Error) => setError(e.message));
   }, []);
 
   if (error) return <main><p className="error">Could not load this Training Week: {error}</p></main>;
@@ -16,6 +16,7 @@ export function App() {
 
   return (
     <main>
+      <SyncBar onSynced={loadWeek} />
       <h1>This Training Week</h1>
       <p className="range">
         {formatDate(week.start)} – {formatDate(week.end)}
@@ -54,6 +55,67 @@ export function App() {
   );
 }
 
+/** How often the page checks for syncs it did not start, such as scheduled ones. */
+const SYNC_POLL_MS = 60_000;
+
+/** Shows the latest sync and offers Sync now; calls `onSynced` whenever a sync has finished since the page loaded. */
+function SyncBar({ onSynced }: { onSynced: () => Promise<void> }) {
+  const [status, setStatus] = useState<SyncStatusResponse | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [requestError, setRequestError] = useState<string | null>(null);
+  const seenFinishedAt = useRef<string | null | undefined>(undefined);
+
+  async function show(next: SyncStatusResponse) {
+    setStatus(next);
+    const isNewSync = seenFinishedAt.current !== undefined && next.lastFinishedAt !== seenFinishedAt.current;
+    seenFinishedAt.current = next.lastFinishedAt;
+    if (isNewSync) await onSynced();
+  }
+
+  async function request(init?: RequestInit) {
+    try {
+      await show(await getJson<SyncStatusResponse>("/api/sync", init));
+      setRequestError(null);
+    } catch (e) {
+      setRequestError((e as Error).message);
+    }
+  }
+
+  useEffect(() => {
+    void request();
+    const timer = setInterval(() => void request(), SYNC_POLL_MS);
+    return () => clearInterval(timer);
+  }, []);
+
+  async function syncNow() {
+    setSyncing(true);
+    await request({ method: "POST" });
+    setSyncing(false);
+  }
+
+  const running = syncing || status?.running;
+  return (
+    <div className="sync">
+      <span className="sync-time">
+        {running
+          ? "Syncing…"
+          : status?.lastSucceededAt
+            ? `Last synced ${formatDateTime(status.lastSucceededAt)}`
+            : "Not synced yet"}
+      </span>
+      <button type="button" onClick={syncNow} disabled={running}>
+        Sync now
+      </button>
+      {status?.lastError && (
+        <p className="error">
+          Last sync failed {status.lastFinishedAt && formatDateTime(status.lastFinishedAt)}: {status.lastError}
+        </p>
+      )}
+      {requestError && <p className="error">Could not reach the server: {requestError}</p>}
+    </div>
+  );
+}
+
 function ActivitySummary({ activity }: { activity: WeekActivity }) {
   const minutes = Math.round(activity.movingTime / 60);
   const km = activity.distance === null ? null : (activity.distance / 1000).toFixed(1);
@@ -63,6 +125,16 @@ function ActivitySummary({ activity }: { activity: WeekActivity }) {
       {minutes} min
     </span>
   );
+}
+
+async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, init);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return (await res.json()) as T;
+}
+
+function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 }
 
 function formatDate(date: string, withWeekday = false): string {

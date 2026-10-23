@@ -28,6 +28,9 @@ export interface IntervalsClient {
   activities(oldest: string, newest: string): Promise<IntervalsActivity[]>;
 }
 
+/** How much of an error response to keep; enough for intervals.icu's message, not a whole HTML page. */
+const ERROR_BODY_CHARS = 200;
+
 export function createIntervalsClient(athleteId: string, apiKey: string): IntervalsClient {
   const authorization = `Basic ${Buffer.from(`API_KEY:${apiKey}`).toString("base64")}`;
 
@@ -35,7 +38,7 @@ export function createIntervalsClient(athleteId: string, apiKey: string): Interv
     const url = new URL(`https://intervals.icu/api/v1/athlete/${encodeURIComponent(athleteId)}/${path}`);
     for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
     const res = await fetch(url, { headers: { authorization, accept: "application/json" } });
-    if (!res.ok) throw new Error(`intervals.icu ${path} failed: ${res.status} ${await res.text()}`);
+    if (!res.ok) throw new Error(`intervals.icu ${path} failed: ${res.status} ${(await res.text()).slice(0, ERROR_BODY_CHARS)}`);
     return (await res.json()) as T;
   }
 
