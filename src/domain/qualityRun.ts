@@ -25,10 +25,17 @@ export interface QualityRun {
   repGap: number | null;
   /** Rep HR in bpm; null without Reps or heart rate. */
   repHr: number | null;
+  /** Efficiency in grade-adjusted metres per heartbeat; null without Reps that have both GAP and heart rate. */
+  efficiency: number | null;
+  /** At least one Rep's average heart rate exceeded the top of the planned heart-rate target. */
+  overTarget: boolean;
 }
 
 /** A Quality Run's name leads with its Format, e.g. "4 x 6:00 at 163–177 bpm". */
 const QUALITY_RUN_FORMAT = /^\s*(\d+)\s*[x×]\s*(\d+):(\d{2})/i;
+
+/** A Planned Workout's name gives its heart-rate target, e.g. "at 163–177 bpm". */
+const HEART_RATE_TARGET = /(\d+)\s*[–-]\s*(\d+)\s*bpm/i;
 
 /** How far a work interval's duration may stray from the planned Rep Length and still be a Rep. */
 const REP_LENGTH_TOLERANCE = 0.15;
@@ -40,11 +47,22 @@ export function qualityRunFormat(plannedWorkoutName: string): QualityRunFormat |
   return { reps: Number(match[1]), repLength: Number(match[2]) * 60 + Number(match[3]) };
 }
 
+/** The top of the heart-rate target a Planned Workout's name gives, in bpm; null when it names none. */
+export function heartRateCeiling(plannedWorkoutName: string): number | null {
+  const match = HEART_RATE_TARGET.exec(plannedWorkoutName);
+  return match ? Number(match[2]) : null;
+}
+
 /**
  * Picks the Reps out of an Activity's detected intervals, using the Planned Workout's Format as the template:
  * the work intervals within 15% of the Rep Length, in order, up to the planned rep count.
+ * `hrCeiling` is the top of the Planned Workout's heart-rate target, for the Over Target check.
  */
-export function qualityRun(format: QualityRunFormat, intervals: DetectedInterval[]): QualityRun {
+export function qualityRun(
+  format: QualityRunFormat,
+  intervals: DetectedInterval[],
+  hrCeiling: number | null,
+): QualityRun {
   const reps = intervals
     .filter(
       (i) => i.type === "WORK" && Math.abs(i.movingTime - format.repLength) <= format.repLength * REP_LENGTH_TOLERANCE,
@@ -56,7 +74,17 @@ export function qualityRun(format: QualityRunFormat, intervals: DetectedInterval
     complete: reps.length === format.reps,
     repGap: timeWeightedMean(reps, (r) => r.gap),
     repHr: timeWeightedMean(reps, (r) => r.averageHeartrate),
+    efficiency: efficiency(reps),
+    overTarget: hrCeiling !== null && reps.some((r) => r.averageHeartrate !== null && r.averageHeartrate > hrCeiling),
   };
+}
+
+/** Grade-adjusted metres per heartbeat over the Reps that have both GAP and heart rate. */
+function efficiency(reps: DetectedInterval[]): number | null {
+  const measured = reps.filter((r) => r.gap !== null && r.averageHeartrate !== null);
+  const gap = timeWeightedMean(measured, (r) => r.gap);
+  const hr = timeWeightedMean(measured, (r) => r.averageHeartrate);
+  return gap === null || hr === null || hr === 0 ? null : (gap * 60) / hr;
 }
 
 function timeWeightedMean(reps: DetectedInterval[], value: (r: DetectedInterval) => number | null): number | null {

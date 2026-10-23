@@ -23,9 +23,18 @@ export function RepCards({ cards }: { cards: RepLengthCard[] }) {
 
 function RepCard({ card }: { card: RepLengthCard }) {
   const { latest, previous } = card;
+  const [showEfficiency, setShowEfficiency] = useState(false);
   return (
     <section className="rep-card">
-      <h3>{formatDuration(card.repLength)} Reps</h3>
+      <header>
+        <h3>{formatDuration(card.repLength)} Reps</h3>
+        {card.runs.length > 0 && (
+          <label className="toggle">
+            <input type="checkbox" checked={showEfficiency} onChange={(e) => setShowEfficiency(e.target.checked)} />
+            Efficiency
+          </label>
+        )}
+      </header>
       {latest?.repGap ? (
         <>
           <p className="headline">
@@ -34,6 +43,7 @@ function RepCard({ card }: { card: RepLengthCard }) {
           <p className="change">
             {formatDate(latest.date)}
             {latest.repHr !== null && ` · ${Math.round(latest.repHr)} bpm`}
+            {latest.overTarget && <span className="over-target"> · Over Target</span>}
             {previous?.repGap && ` · ${paceChange(latest.repGap, previous.repGap)} than ${formatDate(previous.date)}`}
           </p>
         </>
@@ -42,7 +52,7 @@ function RepCard({ card }: { card: RepLengthCard }) {
       )}
       {card.runs.length > 0 && (
         <>
-          <RepChart runs={card.runs} />
+          <RepChart runs={card.runs} showEfficiency={showEfficiency} />
           <RunTable runs={card.runs} />
         </>
       )}
@@ -58,22 +68,25 @@ function paceChange(latestGap: number, previousGap: number): string {
   return `${size} ${seconds < 0 ? "faster" : "slower"}`;
 }
 
-/** Rep GAP above Rep HR on a shared date axis; only Complete runs are joined into a trend line. */
-function RepChart({ runs }: { runs: RepLengthRun[] }) {
+/**
+ * Rep GAP above Rep HR on a shared date axis; only Complete runs are joined into a trend line.
+ * Over Target runs get a red ring, Format changes a marker line, and Efficiency an optional series beside Rep GAP.
+ */
+function RepChart({ runs, showEfficiency }: { runs: RepLengthRun[]; showEfficiency: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   const dark = usePrefersDark();
 
   useEffect(() => {
     const el = ref.current!;
     const chart = echarts.init(el, null, { renderer: "svg" });
-    chart.setOption(chartOption(runs, chartColors()));
+    chart.setOption(chartOption(runs, chartColors(), showEfficiency));
     const observer = new ResizeObserver(() => chart.resize());
     observer.observe(el);
     return () => {
       observer.disconnect();
       chart.dispose();
     };
-  }, [runs, dark]);
+  }, [runs, dark, showEfficiency]);
 
   return <div ref={ref} className="rep-chart" />;
 }
@@ -81,6 +94,8 @@ function RepChart({ runs }: { runs: RepLengthRun[] }) {
 interface ChartColors {
   gap: string;
   hr: string;
+  efficiency: string;
+  overTarget: string;
   text: string;
   muted: string;
   grid: string;
@@ -93,6 +108,8 @@ function chartColors(): ChartColors {
   return {
     gap: v("--series-1"),
     hr: v("--series-2"),
+    efficiency: v("--series-3"),
+    overTarget: v("--over-target"),
     text: v("--text"),
     muted: v("--muted"),
     grid: v("--border"),
@@ -103,12 +120,33 @@ function chartColors(): ChartColors {
 const DAY_MS = 86_400_000;
 const time = (s: RepLengthRun) => Date.parse(`${s.date}T00:00:00`);
 
-function chartOption(runs: RepLengthRun[], c: ChartColors): echarts.EChartsCoreOption {
+function chartOption(runs: RepLengthRun[], c: ChartColors, showEfficiency: boolean): echarts.EChartsCoreOption {
   const complete = runs.filter((s) => s.complete);
   const incomplete = runs.filter((s) => !s.complete);
   const byTime = new Map(runs.map((s) => [time(s), s]));
-  const gapPoint = (s: RepLengthRun) => [time(s), secondsPerMile(s.repGap!)];
-  const hrPoint = (s: RepLengthRun) => [time(s), s.repHr];
+  /** A chart point, ringed in red when the run was Over Target. */
+  const point = (s: RepLengthRun, value: number) =>
+    s.overTarget
+      ? { value: [time(s), value], symbolSize: 11, itemStyle: { borderColor: c.overTarget, borderWidth: 3 } }
+      : [time(s), value];
+  const gapPoint = (s: RepLengthRun) => point(s, secondsPerMile(s.repGap!));
+  const hrPoint = (s: RepLengthRun) => point(s, s.repHr!);
+  const efficiencyPoint = (s: RepLengthRun) => [time(s), s.efficiency];
+  const formatChanges = runs.filter((s) => s.formatChange !== null);
+  /** A vertical line at each Format change across one grid, on a series of its own so the legend never hides it. */
+  const formatChangeLines = (grid: number, labelled: boolean) => ({
+    type: "line",
+    xAxisIndex: grid,
+    yAxisIndex: grid,
+    data: [],
+    markLine: {
+      silent: true,
+      symbol: "none",
+      lineStyle: { color: c.muted, type: "solid", opacity: 0.6 },
+      label: labelled ? { color: c.muted, fontSize: 11, formatter: "{b}", position: "end" } : { show: false },
+      data: formatChanges.map((s) => ({ xAxis: time(s), name: formatChangeLabel(s) })),
+    },
+  });
   const axisLabel = { color: c.muted, fontSize: 11 };
   const splitLine = { lineStyle: { color: c.grid } };
   const filled = { symbol: "circle", symbolSize: 9, itemStyle: { borderColor: c.surface, borderWidth: 1 } };
@@ -123,7 +161,20 @@ function chartOption(runs: RepLengthRun[], c: ChartColors): echarts.EChartsCoreO
   return {
     animation: false,
     textStyle: { fontFamily: "system-ui, sans-serif" },
-    legend: { top: 0, right: 0, data: ["Complete", "Incomplete"], textStyle: { color: c.muted }, itemWidth: 14 },
+    legend: {
+      top: 0,
+      right: 0,
+      data: [
+        "Complete",
+        "Incomplete",
+        ...(runs.some((s) => s.overTarget) ? ["Over Target"] : []),
+        ...(showEfficiency ? ["Efficiency"] : []),
+      ],
+      formatter: (name: string) => (name === "Efficiency" ? "Efficiency m/beat" : name),
+      selectedMode: false,
+      textStyle: { color: c.muted },
+      itemWidth: 14,
+    },
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "line", lineStyle: { color: c.muted } },
@@ -134,8 +185,8 @@ function chartOption(runs: RepLengthRun[], c: ChartColors): echarts.EChartsCoreO
     },
     axisPointer: { link: [{ xAxisIndex: "all" }] },
     grid: [
-      { left: 48, right: 16, top: 48, height: 130 },
-      { left: 48, right: 16, top: 216, bottom: 28 },
+      { left: 48, right: showEfficiency ? 48 : 16, top: 48, height: 130 },
+      { left: 48, right: showEfficiency ? 48 : 16, top: 216, bottom: 28 },
     ],
     xAxis: [0, 1].map((gridIndex) => ({
       type: "time",
@@ -177,6 +228,17 @@ function chartOption(runs: RepLengthRun[], c: ChartColors): echarts.EChartsCoreO
         axisLabel,
         splitLine,
         splitNumber: 2,
+      },
+      {
+        gridIndex: 0,
+        type: "value",
+        show: showEfficiency,
+        position: "right",
+        scale: true,
+        minInterval: 0.01,
+        axisLabel: { ...axisLabel, formatter: (v: number) => v.toFixed(2) },
+        splitLine: { show: false },
+        splitNumber: 3,
       },
     ],
     series: [
@@ -227,8 +289,49 @@ function chartOption(runs: RepLengthRun[], c: ChartColors): echarts.EChartsCoreO
         color: c.hr,
         ...hollow(c.hr),
       },
+      /** No points of its own: it puts the red ring that marks Over Target runs in the legend. */
+      { name: "Over Target", type: "scatter", data: [], ...hollow(c.overTarget) },
+      formatChangeLines(0, false),
+      formatChangeLines(1, true),
+      ...(showEfficiency
+        ? [
+            {
+              name: "Efficiency",
+              type: "line",
+              xAxisIndex: 0,
+              yAxisIndex: 2,
+              data: complete.filter((s) => s.efficiency !== null).map(efficiencyPoint),
+              color: c.efficiency,
+              lineStyle: { width: 2, type: "dashed" },
+              ...filled,
+            },
+            {
+              name: "Efficiency",
+              type: "scatter",
+              xAxisIndex: 0,
+              yAxisIndex: 2,
+              data: incomplete.filter((s) => s.efficiency !== null).map(efficiencyPoint),
+              color: c.efficiency,
+              ...hollow(c.efficiency),
+            },
+          ]
+        : []),
     ],
   };
+}
+
+/** A short marker for a Format change, e.g. "4→5 reps" or "rec 1:30→1:00". */
+function formatChangeLabel(s: RepLengthRun): string {
+  const from = s.formatChange!;
+  const parts: string[] = [];
+  if (from.reps !== null) parts.push(`${from.reps}→${s.format.reps} reps`);
+  if (from.recovery !== null) parts.push(`rec ${formatDuration(from.recovery)}→${formatDuration(s.recovery!)}`);
+  return parts.join(" · ");
+}
+
+/** A Format as written in the plan, e.g. "4 × 6:00, 1:30 rec". */
+function formatText(reps: number, repLength: number, recovery: number | null): string {
+  return `${reps} × ${formatDuration(repLength)}${recovery === null ? "" : `, ${formatDuration(recovery)} rec`}`;
 }
 
 function runTooltip(s: RepLengthRun | undefined): string {
@@ -237,8 +340,17 @@ function runTooltip(s: RepLengthRun | undefined): string {
     `<strong>${formatDate(s.date)}</strong> · ${escapeHtml(s.plannedWorkoutName)}`,
     `${s.complete ? "Complete" : "Incomplete"} · ${s.repsRun}/${s.format.reps} Reps`,
   ];
+  if (s.formatChange) {
+    const reps = s.formatChange.reps ?? s.format.reps;
+    const recovery = s.formatChange.recovery ?? s.recovery;
+    lines.push(
+      `Format changed: ${formatText(reps, s.format.repLength, recovery)} → ${formatText(s.format.reps, s.format.repLength, s.recovery)}`,
+    );
+  }
   if (s.repGap !== null) lines.push(`Rep GAP ${formatDuration(secondsPerMile(s.repGap))} /mi`);
   if (s.repHr !== null) lines.push(`Rep HR ${Math.round(s.repHr)} bpm`);
+  if (s.overTarget) lines.push(`<span class="over-target">Over Target: a Rep averaged above ${s.hrCeiling} bpm</span>`);
+  if (s.efficiency !== null) lines.push(`Efficiency ${s.efficiency.toFixed(2)} m/beat`);
   return lines.join("<br>");
 }
 
@@ -260,14 +372,15 @@ function RunTable({ runs }: { runs: RepLengthRun[] }) {
           {[...runs].reverse().map((s) => (
             <tr key={s.activityId} className={s.complete ? undefined : "incomplete"}>
               <td>{formatDate(s.date)}</td>
-              <td>
-                {s.format.reps} × {formatDuration(s.format.repLength)}
-              </td>
+              <td>{formatText(s.format.reps, s.format.repLength, s.recovery)}</td>
               <td>
                 {s.repsRun}/{s.format.reps} {s.complete ? "Complete" : "Incomplete"}
               </td>
               <td>{s.repGap === null ? "–" : `${formatDuration(secondsPerMile(s.repGap))} /mi`}</td>
-              <td>{s.repHr === null ? "–" : `${Math.round(s.repHr)} bpm`}</td>
+              <td>
+                {s.repHr === null ? "–" : `${Math.round(s.repHr)} bpm`}
+                {s.overTarget && <span className="over-target"> Over Target</span>}
+              </td>
             </tr>
           ))}
         </tbody>

@@ -9,6 +9,8 @@
   --upcoming: #6b6b66;
   --series-1: #2a78d6;
   --series-2: #eb6834;
+  --series-3: #1f8a70;
+  --over-target: #d42a2a;
   font-family: system-ui, sans-serif;
   color: var(--text);
   background: var(--bg);
@@ -26,6 +28,8 @@
     --upcoming: #a0a09a;
     --series-1: #3987e5;
     --series-2: #d95926;
+    --series-3: #3bb592;
+    --over-target: #f05252;
   }
 }
 
@@ -174,9 +178,29 @@ h2 {
   padding: 12px 16px;
 }
 
+.rep-card header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
 .rep-card h3 {
   margin: 0;
   font-size: 1rem;
+}
+
+.rep-card .toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.over-target {
+  color: var(--over-target);
 }
 
 .rep-card .headline {
@@ -202,13 +226,13 @@ h2 {
   margin-top: 8px;
 }
 
-.sessions summary {
+.runs summary {
   cursor: pointer;
   color: var(--muted);
   font-size: 0.875rem;
 }
 
-.sessions table {
+.runs table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.875rem;
@@ -216,18 +240,18 @@ h2 {
   margin-top: 6px;
 }
 
-.sessions th,
-.sessions td {
+.runs th,
+.runs td {
   text-align: left;
   padding: 4px 8px 4px 0;
   border-bottom: 1px solid var(--border);
 }
 
-.sessions th {
+.runs th {
   color: var(--muted);
   font-weight: 600;
 }
 
-.sessions tr.incomplete td {
+.runs tr.incomplete td {
   color: var(--muted);
 }

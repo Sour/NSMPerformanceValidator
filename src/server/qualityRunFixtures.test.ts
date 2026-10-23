@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { qualityRun, qualityRunFormat, type QualityRunFormat } from "../domain/qualityRun";
+import { heartRateCeiling, qualityRun, qualityRunFormat, type QualityRunFormat } from "../domain/qualityRun";
 import { detectedIntervals } from "./intervals";
 
 /** A recorded intervals.icu `GET /activity/{id}/intervals` response. */
@@ -9,7 +9,7 @@ function recorded(activityId: string): unknown {
 }
 
 function analyse(plannedName: string, activityId: string) {
-  return qualityRun(qualityRunFormat(plannedName)!, detectedIntervals(recorded(activityId)));
+  return qualityRun(qualityRunFormat(plannedName)!, detectedIntervals(recorded(activityId)), heartRateCeiling(plannedName));
 }
 
 describe("Rep identification against recorded intervals.icu responses", () => {
@@ -51,6 +51,23 @@ describe("Rep identification against recorded intervals.icu responses", () => {
     expect(run.complete).toBe(true);
     expect(run.repGap).toBeCloseTo((3.119371 * 600 + 3.096033 * 606) / 1206, 6);
     expect(run.repHr).toBeCloseTo((171 * 600 + 172 * 606) / 1206, 6);
+  });
+
+  it("is not Over Target when a Rep only peaks above the ceiling (5 Oct 2026, peak 181 bpm, average 172)", () => {
+    const run = analyse("2 x 10:00 at 163–177 bpm", "i193887058");
+    expect(run.overTarget).toBe(false);
+    expect(analyse("2 x 10:00 at 160–170 bpm", "i193887058").overTarget).toBe(true);
+  });
+});
+
+describe("heartRateCeiling", () => {
+  it("is the top of the heart-rate target in a Planned Workout's name", () => {
+    expect(heartRateCeiling("4 x 6:00 at 163–177 bpm")).toBe(177);
+    expect(heartRateCeiling("4 x 6:00 at 150-160 bpm")).toBe(160);
+  });
+
+  it("is null when the name gives no heart-rate target", () => {
+    expect(heartRateCeiling("4 x 6:00")).toBeNull();
   });
 });
 
