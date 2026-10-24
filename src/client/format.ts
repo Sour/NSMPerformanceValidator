@@ -22,6 +22,11 @@ export function formatVolume(volume: Volume): string {
   return `${formatMiles(volume.distance)} · ${formatHoursMinutes(volume.movingTime)}`;
 }
 
+/** Text made safe to put in a chart tooltip's HTML. */
+export function escapeHtml(text: string): string {
+  return text.replace(/[&<>"]/g, (ch) => `&#${ch.charCodeAt(0)};`);
+}
+
 export function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 }

@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { easyTrend, type EasyTrendRun } from "../domain/easyTrend";
 import {
   repLengthCards,
   type AnalysedActivity,
@@ -8,7 +9,7 @@ import {
 import { trainingWeek, type TrainingDay, type TrainingWeek, type WeekWorkout } from "../domain/trainingWeek";
 import { weeklyVolume, type VolumeWeek } from "../domain/weeklyVolume";
 import type { Db } from "./db";
-import { detectedIntervals, plannedRecovery } from "./intervals";
+import { activityAverages, detectedIntervals, plannedRecovery } from "./intervals";
 import { loadActivities, loadPlannedWorkouts, loadSyncStatus, type StoredActivity } from "./store";
 import type { SyncRunner } from "./syncRunner";
 
@@ -25,6 +26,10 @@ export interface ProgressResponse {
 export interface VolumeResponse {
   /** Oldest first; the last is this Training Week. */
   weeks: VolumeWeek[];
+}
+export interface EasyResponse {
+  /** Oldest first. */
+  runs: EasyTrendRun[];
 }
 export interface SyncStatusResponse {
   /** When the latest sync finished, as an ISO timestamp. */
@@ -75,6 +80,11 @@ export function createApp(db: Db, today: () => string, syncRunner: SyncRunner) {
       const planned = loadPlannedWorkouts(db).map(({ raw: _, ...p }) => p);
       const activities = loadActivities(db).map(({ raw: _, intervals: __, ...a }) => a);
       return c.json<VolumeResponse>({ weeks: weeklyVolume(today(), planned, activities) });
+    })
+    .get("/api/easy", (c) => {
+      const planned = loadPlannedWorkouts(db).map(({ raw: _, ...p }) => p);
+      const activities = loadActivities(db).map(({ raw, intervals: _, ...a }) => ({ ...a, ...activityAverages(raw) }));
+      return c.json<EasyResponse>({ runs: easyTrend(planned, activities) });
     })
     .get("/api/sync", (c) => c.json(syncStatus()))
     .post("/api/sync", async (c) => {

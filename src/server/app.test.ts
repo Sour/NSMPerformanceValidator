@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { createApp, type ProgressResponse, type SyncStatusResponse, type VolumeResponse, type WeekResponse } from "./app";
+import {
+  createApp,
+  type EasyResponse,
+  type ProgressResponse,
+  type SyncStatusResponse,
+  type VolumeResponse,
+  type WeekResponse,
+} from "./app";
 import { openDb } from "./db";
 import { saveSync } from "./store";
 import type { SyncRunner } from "./syncRunner";
@@ -147,6 +154,51 @@ describe("/api/volume", () => {
     expect(weeks.map((w) => [w.start, w.byCategory["Easy Run"].distance, w.byCategory["Unplanned Run"].distance])).toEqual([
       ["2026-10-12", 8000, 0],
       ["2026-10-19", 0, 5000],
+    ]);
+  });
+});
+
+describe("/api/easy", () => {
+  it("has the Easy GAP and Easy HR intervals.icu recorded for each Matched Easy Run and Long Run", async () => {
+    const db = openDb(":memory:");
+    const event = (id: number, date: string, name: string) => ({
+      id,
+      start_date_local: `${date}T00:00:00`,
+      category: "WORKOUT",
+      type: "Run",
+      name,
+      description: "[NSM]",
+      paired_activity_id: null,
+    });
+    const activity = (id: string, date: string, recorded: { gap?: number; average_heartrate?: number }) => ({
+      id,
+      start_date_local: `${date}T07:00:00`,
+      type: "Run",
+      name: "Everett Running",
+      moving_time: 2400,
+      distance: 8000,
+      paired_event_id: null,
+      ...recorded,
+    });
+    saveSync(
+      db,
+      { from: "2026-10-01", to: "2026-10-30" },
+      [event(1, "2026-10-20", "Easy Run"), event(2, "2026-10-24", "Long Run")],
+      [
+        activity("easy", "2026-10-20", { gap: 2.36, average_heartrate: 139 }),
+        activity("long", "2026-10-24", { gap: 2.2 }),
+        activity("extra", "2026-10-22", { gap: 2.0, average_heartrate: 122 }),
+      ],
+      new Map(),
+      { finishedAt: "2026-10-23T12:00:00.000Z", syncedThrough: "2026-10-24" },
+    );
+    const app = createApp(db, () => "2026-10-24", idleRunner());
+
+    const { runs } = (await (await app.request("/api/easy")).json()) as EasyResponse;
+
+    expect(runs.map((r) => [r.activityId, r.runType, r.gap, r.averageHeartrate])).toEqual([
+      ["easy", "Easy Run", 2.36, 139],
+      ["long", "Long Run", 2.2, null],
     ]);
   });
 });

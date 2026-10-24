@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import type { VolumeWeek } from "../domain/weeklyVolume";
-import type { ProgressResponse, SyncStatusResponse, VolumeResponse, WeekActivity, WeekResponse } from "../server/app";
+import type {
+  EasyResponse,
+  ProgressResponse,
+  SyncStatusResponse,
+  VolumeResponse,
+  WeekActivity,
+  WeekResponse,
+} from "../server/app";
+import { EasyChart } from "./EasyChart";
 import { formatDate, formatDateTime, formatVolume } from "./format";
 import { RepCards } from "./RepCards";
 import { VolumeChart } from "./VolumeChart";
@@ -9,6 +17,7 @@ export function App() {
   const [week, setWeek] = useState<WeekResponse | null>(null);
   const [progress, setProgress] = useState<ProgressResponse | null>(null);
   const [volume, setVolume] = useState<VolumeResponse | null>(null);
+  const [easy, setEasy] = useState<EasyResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = () =>
@@ -16,6 +25,7 @@ export function App() {
       getJson<WeekResponse>("/api/week").then(setWeek),
       getJson<ProgressResponse>("/api/progress").then(setProgress),
       getJson<VolumeResponse>("/api/volume").then(setVolume),
+      getJson<EasyResponse>("/api/easy").then(setEasy),
     ]).then(() => {});
 
   useEffect(() => {
@@ -23,7 +33,7 @@ export function App() {
   }, []);
 
   if (error) return <main><p className="error">Could not load: {error}</p></main>;
-  if (!week || !progress || !volume) return <main><p>Loading…</p></main>;
+  if (!week || !progress || !volume || !easy) return <main><p>Loading…</p></main>;
 
   return (
     <main>
@@ -33,6 +43,9 @@ export function App() {
 
       <h1 className="section-title">Weekly Volume</h1>
       <VolumeChart weeks={volume.weeks} />
+
+      <h1 className="section-title">Easy GAP</h1>
+      <EasyChart runs={easy.runs} />
 
       <h1 className="section-title">This Training Week</h1>
       <p className="range">

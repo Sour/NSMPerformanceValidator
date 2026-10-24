@@ -41,6 +41,15 @@ export function toActivity(a: IntervalsActivity): Activity {
   };
 }
 
+/** An Activity's whole-run Easy GAP and Easy HR, read from its intervals.icu activity response; each null when not recorded. */
+export function activityAverages(activity: unknown): { gap: number | null; averageHeartrate: number | null } {
+  const a = (activity ?? {}) as { gap?: unknown; average_heartrate?: unknown };
+  return {
+    gap: typeof a.gap === "number" ? a.gap : null,
+    averageHeartrate: typeof a.average_heartrate === "number" ? a.average_heartrate : null,
+  };
+}
+
 interface WorkoutStep {
   reps?: number;
   intensity?: string;

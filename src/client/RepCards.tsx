@@ -5,7 +5,7 @@ import { SVGRenderer } from "echarts/renderers";
 import { useEffect, useRef, useState } from "react";
 import { formatDuration, secondsPerMile } from "../domain/pace";
 import type { RepLengthCard, RepLengthRun } from "../domain/repProgress";
-import { formatDate, formatText } from "./format";
+import { escapeHtml, formatDate, formatText } from "./format";
 import { RunDrawer } from "./RunDrawer";
 import { usePrefersDark } from "./usePrefersDark";
 
@@ -408,8 +408,4 @@ function RunTable({ runs, onSelect }: { runs: RepLengthRun[]; onSelect: (run: Re
       </table>
     </details>
   );
-}
-
-function escapeHtml(text: string): string {
-  return text.replace(/[&<>"]/g, (ch) => `&#${ch.charCodeAt(0)};`);
 }
