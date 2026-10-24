@@ -5,7 +5,8 @@ import { SVGRenderer } from "echarts/renderers";
 import { useEffect, useRef, useState } from "react";
 import { formatDuration, secondsPerMile } from "../domain/pace";
 import type { RepLengthCard, RepLengthRun } from "../domain/repProgress";
-import { formatDate } from "./format";
+import { formatDate, formatText } from "./format";
+import { RunDrawer } from "./RunDrawer";
 
 echarts.use([LineChart, ScatterChart, GridComponent, LegendComponent, MarkLineComponent, TooltipComponent, SVGRenderer]);
 
@@ -24,6 +25,7 @@ export function RepCards({ cards }: { cards: RepLengthCard[] }) {
 function RepCard({ card }: { card: RepLengthCard }) {
   const { latest, previous } = card;
   const [showEfficiency, setShowEfficiency] = useState(false);
+  const [selected, setSelected] = useState<RepLengthRun | null>(null);
   return (
     <section className="rep-card">
       <header>
@@ -52,10 +54,11 @@ function RepCard({ card }: { card: RepLengthCard }) {
       )}
       {card.runs.length > 0 && (
         <>
-          <RepChart runs={card.runs} showEfficiency={showEfficiency} />
-          <RunTable runs={card.runs} />
+          <RepChart runs={card.runs} showEfficiency={showEfficiency} onSelect={setSelected} />
+          <RunTable runs={card.runs} onSelect={setSelected} />
         </>
       )}
+      {selected && <RunDrawer key={selected.activityId} run={selected} onClose={() => setSelected(null)} />}
     </section>
   );
 }
@@ -71,15 +74,32 @@ function paceChange(latestGap: number, previousGap: number): string {
 /**
  * Rep GAP above Rep HR on a shared date axis; only Complete runs are joined into a trend line.
  * Over Target runs get a red ring, Format changes a marker line, and Efficiency an optional series beside Rep GAP.
+ * Clicking a run's point, or the marker line of a run with no Reps, selects it.
  */
-function RepChart({ runs, showEfficiency }: { runs: RepLengthRun[]; showEfficiency: boolean }) {
+function RepChart({
+  runs,
+  showEfficiency,
+  onSelect,
+}: {
+  runs: RepLengthRun[];
+  showEfficiency: boolean;
+  onSelect: (run: RepLengthRun) => void;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const dark = usePrefersDark();
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
 
   useEffect(() => {
     const el = ref.current!;
     const chart = echarts.init(el, null, { renderer: "svg" });
     chart.setOption(chartOption(runs, chartColors(), showEfficiency));
+    const byTime = new Map(runs.map((s) => [time(s), s]));
+    chart.on("click", (params) => {
+      const at = params.componentType === "markLine" ? (params.data as { xAxis: number }).xAxis : (params.value as number[])[0]!;
+      const run = byTime.get(at);
+      if (run) onSelectRef.current(run);
+    });
     const observer = new ResizeObserver(() => chart.resize());
     observer.observe(el);
     return () => {
@@ -252,8 +272,9 @@ function chartOption(runs: RepLengthRun[], c: ChartColors, showEfficiency: boole
         lineStyle: { width: 2 },
         ...filled,
         markLine: {
-          silent: true,
           symbol: "none",
+          cursor: "pointer",
+          emphasis: { disabled: true },
           lineStyle: { color: c.muted, type: "dashed" },
           label: { color: c.muted, fontSize: 11, formatter: "{b}", position: "start" },
           data: incomplete
@@ -329,11 +350,6 @@ function formatChangeLabel(s: RepLengthRun): string {
   return parts.join(" · ");
 }
 
-/** A Format as written in the plan, e.g. "4 × 6:00, 1:30 rec". */
-function formatText(reps: number, repLength: number, recovery: number | null): string {
-  return `${reps} × ${formatDuration(repLength)}${recovery === null ? "" : `, ${formatDuration(recovery)} rec`}`;
-}
-
 function runTooltip(s: RepLengthRun | undefined): string {
   if (!s) return "";
   const lines = [
@@ -354,7 +370,7 @@ function runTooltip(s: RepLengthRun | undefined): string {
   return lines.join("<br>");
 }
 
-function RunTable({ runs }: { runs: RepLengthRun[] }) {
+function RunTable({ runs, onSelect }: { runs: RepLengthRun[]; onSelect: (run: RepLengthRun) => void }) {
   return (
     <details className="runs">
       <summary>Quality Runs</summary>
@@ -371,7 +387,11 @@ function RunTable({ runs }: { runs: RepLengthRun[] }) {
         <tbody>
           {[...runs].reverse().map((s) => (
             <tr key={s.activityId} className={s.complete ? undefined : "incomplete"}>
-              <td>{formatDate(s.date)}</td>
+              <td>
+                <button type="button" className="link" onClick={() => onSelect(s)}>
+                  {formatDate(s.date)}
+                </button>
+              </td>
               <td>{formatText(s.format.reps, s.format.repLength, s.recovery)}</td>
               <td>
                 {s.repsRun}/{s.format.reps} {s.complete ? "Complete" : "Incomplete"}
