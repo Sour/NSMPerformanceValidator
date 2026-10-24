@@ -27,13 +27,18 @@ export interface WeekWorkout<A extends Activity = Activity> {
   activity?: A;
 }
 
+/** The Monday starting the Training Week that contains `date`, a YYYY-MM-DD date. */
+export function weekStart(date: string): string {
+  return addDays(date, -((dayOfWeek(date) + 6) % 7));
+}
+
 /** The Training Week (Monday to Sunday) containing `today`, a YYYY-MM-DD date. */
 export function trainingWeek<A extends Activity>(
   today: string,
   planned: PlannedWorkout[],
   activities: A[],
 ): TrainingWeek<A> {
-  const start = addDays(today, -((dayOfWeek(today) + 6) % 7));
+  const start = weekStart(today);
   const dates = Array.from({ length: 7 }, (_, i) => addDays(start, i));
   const matches = matchActivities(planned, activities);
   const activityFor = (p: PlannedWorkout) => {

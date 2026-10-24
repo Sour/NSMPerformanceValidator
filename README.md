@@ -25,7 +25,7 @@ The server syncs on start and then every `SYNC_INTERVAL`; the page's **Sync now*
 
 ## Running in Docker
 
-`docker compose up --build` builds the image and serves the page and the API on `PORT` (default `3000`), reading the same `.env`. The database lives in the container's `/data`, mapped to `./data` (or `DATA_DIR`), so it survives restarts. Set `TZ` (e.g. `Europe/Oslo`) so "today" and the Training Week follow your time zone rather than UTC.
+`docker compose up --build` builds the image and serves the page and the API on `PORT` (default `3000`), reading the same `.env`. The database lives in the container's `/data`, mapped to `./data` (or `DATA_DIR`), so it survives restarts. "Today" and the Training Week follow `America/Los_Angeles`; set `TZ` (e.g. `Europe/Oslo`) to follow another time zone.
 
 Every push to `master` builds the image and pushes it to `ghcr.io/sour/nsmperformancevalidator`, tagged `latest` and with the full commit SHA.
 

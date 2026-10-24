@@ -1,17 +1,31 @@
 import { useEffect, useRef, useState } from "react";
-import type { ProgressResponse, SyncStatusResponse, WeekActivity, WeekResponse } from "../server/app";
-import { formatDate, formatDateTime } from "./format";
+import type { VolumeWeek } from "../domain/weeklyVolume";
+import type {
+  EasyResponse,
+  ProgressResponse,
+  SyncStatusResponse,
+  VolumeResponse,
+  WeekActivity,
+  WeekResponse,
+} from "../server/app";
+import { EasyChart } from "./EasyChart";
+import { formatDate, formatDateTime, formatVolume } from "./format";
 import { RepCards } from "./RepCards";
+import { VolumeChart } from "./VolumeChart";
 
 export function App() {
   const [week, setWeek] = useState<WeekResponse | null>(null);
   const [progress, setProgress] = useState<ProgressResponse | null>(null);
+  const [volume, setVolume] = useState<VolumeResponse | null>(null);
+  const [easy, setEasy] = useState<EasyResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = () =>
     Promise.all([
       getJson<WeekResponse>("/api/week").then(setWeek),
       getJson<ProgressResponse>("/api/progress").then(setProgress),
+      getJson<VolumeResponse>("/api/volume").then(setVolume),
+      getJson<EasyResponse>("/api/easy").then(setEasy),
     ]).then(() => {});
 
   useEffect(() => {
@@ -19,7 +33,7 @@ export function App() {
   }, []);
 
   if (error) return <main><p className="error">Could not load: {error}</p></main>;
-  if (!week || !progress) return <main><p>Loading…</p></main>;
+  if (!week || !progress || !volume || !easy) return <main><p>Loading…</p></main>;
 
   return (
     <main>
@@ -27,10 +41,17 @@ export function App() {
       <h1>Rep GAP</h1>
       <RepCards cards={progress.cards} />
 
-      <h1 className="week-title">This Training Week</h1>
+      <h1 className="section-title">Weekly Volume</h1>
+      <VolumeChart weeks={volume.weeks} />
+
+      <h1 className="section-title">Easy GAP / Easy HR</h1>
+      <EasyChart runs={easy.runs} />
+
+      <h1 className="section-title">This Training Week</h1>
       <p className="range">
         {formatDate(week.start)} – {formatDate(week.end)}
       </p>
+      <WeekVolume weeks={volume.weeks} start={week.start} />
 
       <ol className="days">
         {week.days.map((day) => (
@@ -124,6 +145,20 @@ function SyncBar({ onSynced }: { onSynced: () => Promise<void> }) {
       )}
       {requestError && <p className="error">Could not reach the server: {requestError}</p>}
     </div>
+  );
+}
+
+/** This Training Week's volume so far against last week's total. */
+function WeekVolume({ weeks, start }: { weeks: VolumeWeek[]; start: string }) {
+  const i = weeks.findIndex((w) => w.start === start);
+  const thisWeek = weeks[i];
+  if (!thisWeek) return null;
+  const lastWeek = weeks[i - 1];
+  return (
+    <p className="week-volume">
+      <strong>{formatVolume(thisWeek.total)}</strong> so far
+      {lastWeek && <span className="range"> · last week {formatVolume(lastWeek.total)}</span>}
+    </p>
   );
 }
 

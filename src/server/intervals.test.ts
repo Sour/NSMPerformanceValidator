@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { plannedRecovery } from "./intervals";
+import { activityAverages, plannedRecovery } from "./intervals";
+
+describe("activityAverages", () => {
+  it("is an Activity's whole-run Easy GAP and Easy HR", () => {
+    expect(activityAverages({ gap: 2.36, average_heartrate: 139 })).toEqual({ easyGap: 2.36, easyHr: 139 });
+  });
+
+  it("treats a missing or zero GAP, as on a treadmill without a foot pod, as not recorded", () => {
+    expect(activityAverages({ gap: 0, average_heartrate: 139 })).toEqual({ easyGap: null, easyHr: 139 });
+    expect(activityAverages({})).toEqual({ easyGap: null, easyHr: null });
+  });
+});
 
 /** The workout_doc of a recorded "4 x 6:00 at 163–177 bpm" Planned Workout, without its zone and load totals. */
 const fourBySix = {

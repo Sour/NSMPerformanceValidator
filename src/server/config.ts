@@ -33,7 +33,10 @@ export const config = {
   syncInterval: parseInterval(process.env.SYNC_INTERVAL ?? "30m"),
 };
 
-/** Today's date in the server's local time zone, YYYY-MM-DD. */
-export function localToday(): string {
-  return new Date().toLocaleDateString("en-CA");
+/** The athlete's time zone, which Training Weeks follow; set TZ to change it. */
+const ATHLETE_TIME_ZONE = process.env.TZ || "America/Los_Angeles";
+
+/** The date at `now` in the athlete's time zone, YYYY-MM-DD. */
+export function localToday(now = new Date(), timeZone = ATHLETE_TIME_ZONE): string {
+  return now.toLocaleDateString("en-CA", { timeZone });
 }

@@ -5,6 +5,11 @@ export function secondsPerMile(metresPerSecond: number): number {
   return METRES_PER_MILE / metresPerSecond;
 }
 
+/** A distance in metres as miles. */
+export function miles(metres: number): number {
+  return metres / METRES_PER_MILE;
+}
+
 /** Seconds as m:ss, e.g. 425 as "7:05"; for paces and Rep Lengths alike. */
 export function formatDuration(seconds: number): string {
   const whole = Math.round(seconds);
