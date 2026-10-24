@@ -15,8 +15,8 @@ describe("easyTrend", () => {
     const plan = [planned(2, "2026-10-24", "Long Run"), planned(1, "2026-10-20", "Easy Run")];
     const activities = [run("long", "2026-10-24", 2.2, 138), run("easy", "2026-10-20", 2.36, 139)];
     expect(easyTrend(plan, activities)).toEqual([
-      { activityId: "easy", date: "2026-10-20", name: "Everett Running", runType: "Easy Run", easyGap: 2.36, easyHr: 139 },
-      { activityId: "long", date: "2026-10-24", name: "Everett Running", runType: "Long Run", easyGap: 2.2, easyHr: 138 },
+      { activityId: "easy", date: "2026-10-20", name: "Everett Running", runType: "Easy Run", easyGap: 2.36, easyHr: 139, easyEfficiency: expect.any(Number) },
+      { activityId: "long", date: "2026-10-24", name: "Everett Running", runType: "Long Run", easyGap: 2.2, easyHr: 138, easyEfficiency: expect.any(Number) },
     ]);
   });
 
@@ -32,6 +32,11 @@ describe("easyTrend", () => {
 
   it("keeps a run without GAP or heart rate, with them null", () => {
     const [easy] = easyTrend([planned(1, "2026-10-20", "Easy Run")], [run("no-hr", "2026-10-20", 2.3, null)]);
-    expect(easy).toMatchObject({ activityId: "no-hr", easyGap: 2.3, easyHr: null });
+    expect(easy).toMatchObject({ activityId: "no-hr", easyGap: 2.3, easyHr: null, easyEfficiency: null });
+  });
+
+  it("has Easy Efficiency, grade-adjusted metres per heartbeat: 2.5 m/s at 150 bpm is 1 m/beat", () => {
+    const [easy] = easyTrend([planned(1, "2026-10-20", "Easy Run")], [run("easy", "2026-10-20", 2.5, 150)]);
+    expect(easy!.easyEfficiency).toBeCloseTo(1, 10);
   });
 });

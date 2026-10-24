@@ -10,39 +10,52 @@ import { usePrefersDark } from "./usePrefersDark";
 
 echarts.use([LineChart, GridComponent, LegendComponent, TooltipComponent, SVGRenderer]);
 
-/** Easy GAP and Easy HR over time for every Matched Easy Run and Long Run, with a table of the same numbers. */
+/**
+ * Easy GAP and Easy HR over time for every Matched Easy Run and Long Run, Easy Efficiency below them,
+ * and a table of the same numbers.
+ */
 export function EasyChart({ runs }: { runs: EasyTrendRun[] }) {
   if (runs.length === 0) return <p className="rest">No Easy Runs or Long Runs yet</p>;
   return (
     <section className="easy">
-      <EasyLines runs={runs} />
+      <EasyLines runs={runs} option={chartOption} />
+      <EasyLines runs={runs} option={efficiencyOption} className="easy-chart efficiency" />
       <EasyTable runs={runs} />
     </section>
   );
 }
 
-function EasyLines({ runs }: { runs: EasyTrendRun[] }) {
+function EasyLines({
+  runs,
+  option,
+  className = "easy-chart",
+}: {
+  runs: EasyTrendRun[];
+  option: (runs: EasyTrendRun[], c: ChartColors) => echarts.EChartsCoreOption;
+  className?: string;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const dark = usePrefersDark();
 
   useEffect(() => {
     const el = ref.current!;
     const chart = echarts.init(el, null, { renderer: "svg" });
-    chart.setOption(chartOption(runs, chartColors()));
+    chart.setOption(option(runs, chartColors()));
     const observer = new ResizeObserver(() => chart.resize());
     observer.observe(el);
     return () => {
       observer.disconnect();
       chart.dispose();
     };
-  }, [runs, dark]);
+  }, [runs, option, dark]);
 
-  return <div ref={ref} className="easy-chart" />;
+  return <div ref={ref} className={className} />;
 }
 
 interface ChartColors {
   gap: string;
   hr: string;
+  efficiency: string;
   text: string;
   muted: string;
   grid: string;
@@ -55,6 +68,7 @@ function chartColors(): ChartColors {
   return {
     gap: v("--series-1"),
     hr: v("--series-2"),
+    efficiency: v("--series-3"),
     text: v("--text"),
     muted: v("--muted"),
     grid: v("--border"),
@@ -160,11 +174,69 @@ function chartOption(runs: EasyTrendRun[], c: ChartColors): echarts.EChartsCoreO
   };
 }
 
+/** Easy Efficiency over time; Easy Runs and Long Runs told apart as on the Easy GAP / Easy HR chart. */
+function efficiencyOption(runs: EasyTrendRun[], c: ChartColors): echarts.EChartsCoreOption {
+  const byId = new Map(runs.map((r) => [r.activityId, r]));
+  const runTypes = (Object.keys(RUN_TYPE_STYLE) as EasyRunType[]).filter((t) => runs.some((r) => r.runType === t));
+  const axisLabel = { color: c.muted, fontSize: 11 };
+  const times = runs.map(time);
+  return {
+    animation: false,
+    textStyle: { fontFamily: "system-ui, sans-serif" },
+    legend: { top: 0, left: 0, selectedMode: false, textStyle: { color: c.muted }, itemWidth: 22 },
+    tooltip: {
+      trigger: "item",
+      backgroundColor: c.surface,
+      borderColor: c.grid,
+      textStyle: { color: c.text },
+      formatter: (params: { data: { id: string } }) => runTooltip(byId.get(params.data.id)),
+    },
+    grid: { left: 48, right: 48, top: 48, bottom: 28 },
+    xAxis: {
+      type: "time",
+      min: Math.min(...times) - DAY_MS,
+      max: Math.max(...times) + DAY_MS,
+      minInterval: DAY_MS,
+      axisLabel: {
+        ...axisLabel,
+        hideOverlap: true,
+        formatter: (v: number) => formatDate(new Date(v).toLocaleDateString("en-CA")),
+      },
+      axisLine: { lineStyle: { color: c.grid } },
+      axisTick: { show: false },
+      splitLine: { show: false },
+    },
+    yAxis: {
+      type: "value",
+      name: "Easy Efficiency m/beat",
+      nameTextStyle: { color: c.muted, fontSize: 11, align: "left" as const, padding: [0, 0, 0, -40] },
+      scale: true,
+      axisLabel: { ...axisLabel, formatter: (v: number) => v.toFixed(2) },
+      splitLine: { lineStyle: { color: c.grid } },
+      splitNumber: 4,
+    },
+    series: runTypes.map((runType) => ({
+      name: `${runType} Efficiency`,
+      type: "line",
+      data: runs
+        .filter((r) => r.runType === runType && r.easyEfficiency !== null)
+        .map((r) => ({ value: [time(r), r.easyEfficiency], id: r.activityId })),
+      color: c.efficiency,
+      symbol: RUN_TYPE_STYLE[runType].symbol,
+      symbolSize: runType === "Long Run" ? 11 : 8,
+      itemStyle: { borderColor: c.surface, borderWidth: 1 },
+      lineStyle: { width: 2, type: RUN_TYPE_STYLE[runType].line },
+      emphasis: { disabled: true },
+    })),
+  };
+}
+
 function runTooltip(r: EasyTrendRun | undefined): string {
   if (!r) return "";
   const lines = [`<strong>${formatDate(r.date)}</strong> · ${r.runType}`, escapeHtml(r.name)];
   if (r.easyGap !== null) lines.push(`Easy GAP ${formatPace(r.easyGap)}`);
   if (r.easyHr !== null) lines.push(`Easy HR ${formatHr(r.easyHr)}`);
+  if (r.easyEfficiency !== null) lines.push(`Easy Efficiency ${r.easyEfficiency.toFixed(2)} m/beat`);
   return lines.join("<br>");
 }
 
@@ -179,6 +251,7 @@ function EasyTable({ runs }: { runs: EasyTrendRun[] }) {
             <th>Run Type</th>
             <th>Easy GAP</th>
             <th>Easy HR</th>
+            <th>Easy Efficiency</th>
           </tr>
         </thead>
         <tbody>
@@ -188,6 +261,7 @@ function EasyTable({ runs }: { runs: EasyTrendRun[] }) {
               <td>{r.runType}</td>
               <td>{r.easyGap === null ? "–" : formatPace(r.easyGap)}</td>
               <td>{r.easyHr === null ? "–" : formatHr(r.easyHr)}</td>
+              <td>{r.easyEfficiency === null ? "–" : `${r.easyEfficiency.toFixed(2)} m/beat`}</td>
             </tr>
           ))}
         </tbody>
