@@ -381,7 +381,7 @@ h2 {
 }
 
 .rep-bars .not-found {
-  grid-column: 2 / -1;
+  grid-column: 1 / -1;
   font-style: italic;
 }
 

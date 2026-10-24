@@ -175,21 +175,24 @@ describe("repLengthCards", () => {
       ],
     );
     expect(cards[0]!.runs[0]!.reps).toEqual([
-      { gap: 3.3, hr: 168, overTarget: false },
-      { gap: 3.25, hr: 174, overTarget: false },
-      { gap: 3.2, hr: null, overTarget: false },
+      { gap: 3.3, hr: 168, aboveCeiling: false },
+      { gap: 3.25, hr: 174, aboveCeiling: false },
+      { gap: 3.2, hr: null, aboveCeiling: false },
     ]);
-    expect(cards[0]!.runs[0]!.missingReps).toEqual([]);
   });
 
-  it("names the planned Reps an Incomplete run did not find", () => {
+  it("gives only the Reps an Incomplete run found, wherever the missing ones fell", () => {
     const cards = repLengthCards(
       [planned(1, "2026-10-21", "5 x 6:00 at 163–177 bpm")],
-      [activity(1, "2026-10-21", [work(360, 3.3, 170), work(360, 3.2, 180), work(360, 3.1, 175)])],
+      [activity(1, "2026-10-21", [work(360, 3.3, 170), work(200, 3.2, 170), work(360, 3.2, 180), work(360, 3.1, 175)])],
     );
     const run = cards[0]!.runs[0]!;
-    expect(run.reps.map((r) => r.overTarget)).toEqual([false, true, false]);
-    expect(run.missingReps).toEqual([4, 5]);
+    expect(run.reps.map((r) => [r.gap, r.aboveCeiling])).toEqual([
+      [3.3, false],
+      [3.2, true],
+      [3.1, false],
+    ]);
+    expect(run.repsRun).toBe(3);
   });
 
   it("leaves out Matched Quality Runs whose intervals have not been fetched", () => {
