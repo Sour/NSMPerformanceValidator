@@ -186,6 +186,11 @@ h2 {
   height: 280px;
 }
 
+.easy-chart.efficiency {
+  height: 200px;
+  margin-top: 12px;
+}
+
 .easy .runs {
   overflow-x: auto;
 }

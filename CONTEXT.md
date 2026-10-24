@@ -105,3 +105,7 @@ Monday to Sunday, matching how the plan is laid out.
 **Efficiency**:
 Grade-adjusted speed per heartbeat across the Reps; a secondary progress number.
 _Avoid_: Aerobic efficiency, EF
+
+**Easy Efficiency**:
+Grade-adjusted speed per heartbeat over a whole Easy Run or Long Run: Easy GAP divided by Easy HR. Tracked over time beside Easy GAP / Easy HR as an aerobic fitness signal.
+_Avoid_: Efficiency (when the Quality Run number is not meant), EF
