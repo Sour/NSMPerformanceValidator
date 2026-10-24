@@ -36,6 +36,22 @@ export interface ThresholdWeek {
   lt2Pace: number | null;
 }
 
+/** LT1 Pace and LT2 Pace now and as of each Training Week, with the heart rates they are read at. */
+export interface ThresholdPaces {
+  /** The current LTHR in bpm; null when no Quality Run names a heart-rate target. */
+  lthr: number | null;
+  /** LT2 Pace in metres per second; null without LTHR or with Not enough data. */
+  lt2Pace: number | null;
+  /** LT1 HR in bpm; null without LTHR. */
+  lt1Hr: number | null;
+  /** LT1 HR was assumed from LTHR rather than set by the runner. */
+  lt1HrAssumed: boolean;
+  /** LT1 Pace in metres per second; null without LTHR or with Not enough data. */
+  lt1Pace: number | null;
+  /** As of each Training Week since the plan began, oldest first; empty without LTHR. */
+  weeks: ThresholdWeek[];
+}
+
 /** A Rep's heart-rate target is 90–98% of LTHR. */
 const TARGET_LOW = 0.9;
 const TARGET_HIGH = 0.98;
@@ -115,6 +131,34 @@ export function thresholdTrend(
     });
   }
   return weeks;
+}
+
+/**
+ * LT1 Pace and LT2 Pace as of `today`, and their trend since the first Planned Workout.
+ * `lt1HrSetting` is the runner's own LT1 HR, or null to assume it from LTHR.
+ */
+export function thresholdPaces(
+  planned: PlannedWorkout[],
+  quality: QualityPoint[],
+  easy: EasyPoint[],
+  today: string,
+  lt1HrSetting: number | null,
+): ThresholdPaces {
+  const current = lthr(planned, today);
+  const planStart = planned.map((p) => p.date).sort()[0];
+  if (current === null || planStart === undefined) {
+    return { lthr: null, lt2Pace: null, lt1Hr: null, lt1HrAssumed: lt1HrSetting === null, lt1Pace: null, weeks: [] };
+  }
+  const lt1 = lt1Hr(current, lt1HrSetting);
+  const line = paceLine(weekStart(today), quality, easy);
+  return {
+    lthr: current,
+    lt2Pace: line === null ? null : paceAt(line, current),
+    lt1Hr: lt1.bpm,
+    lt1HrAssumed: lt1.assumed,
+    lt1Pace: line === null ? null : paceAt(line, lt1.bpm),
+    weeks: thresholdTrend(planStart, today, quality, easy, { lthr: current, lt1Hr: lt1.bpm }),
+  };
 }
 
 function leastSquares(points: { hr: number; gap: number }[]): PaceLine | null {

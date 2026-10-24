@@ -71,15 +71,10 @@ export async function sync(db: Db, client: IntervalsClient, today: string): Prom
 
 /**
  * Stores the intervals.icu Threshold Pace from the athlete's Run settings. It is only a reference beside LT2 Pace,
- * so a failed request keeps the last one stored rather than failing the sync.
+ * so a failed request clears it, hiding the comparison, rather than failing the sync.
  */
 async function syncRunThresholdPace(db: Db, client: IntervalsClient): Promise<void> {
-  let athlete: unknown;
-  try {
-    athlete = await client.athlete();
-  } catch {
-    return;
-  }
+  const athlete = await client.athlete().catch(() => null);
   saveRunThresholdPace(db, runThresholdPace(athlete));
 }
 

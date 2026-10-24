@@ -6,8 +6,8 @@ import {
   type AnalysedPlannedWorkout,
   type RepLengthCard,
 } from "../domain/repProgress";
-import { lt1Hr, lthr, paceAt, paceLine, thresholdTrend, type ThresholdWeek } from "../domain/thresholdPace";
-import { trainingWeek, weekStart, type TrainingDay, type TrainingWeek, type WeekWorkout } from "../domain/trainingWeek";
+import { thresholdPaces, type ThresholdPaces } from "../domain/thresholdPace";
+import { trainingWeek, type TrainingDay, type TrainingWeek, type WeekWorkout } from "../domain/trainingWeek";
 import { weeklyVolume, type VolumeWeek } from "../domain/weeklyVolume";
 import type { Db } from "./db";
 import { activityAverages, detectedIntervals, plannedRecovery } from "./intervals";
@@ -32,21 +32,9 @@ export interface EasyResponse {
   /** Oldest first. */
   runs: EasyTrendRun[];
 }
-export interface ThresholdsResponse {
-  /** The current LTHR in bpm; null when no Quality Run names a heart-rate target. */
-  lthr: number | null;
-  /** LT2 Pace as a grade-adjusted speed in metres per second; null without LTHR or with Not enough data. */
-  lt2Pace: number | null;
-  /** LT1 HR in bpm; null without LTHR. */
-  lt1Hr: number | null;
-  /** LT1 HR was assumed from LTHR rather than set by the runner. */
-  lt1HrAssumed: boolean;
-  /** LT1 Pace as a grade-adjusted speed in metres per second; null without LTHR or with Not enough data. */
-  lt1Pace: number | null;
+export interface ThresholdsResponse extends ThresholdPaces {
   /** The intervals.icu Threshold Pace in metres per second, a reference beside LT2 Pace; null when none is synced. */
   icuThresholdPace: number | null;
-  /** LT1 Pace and LT2 Pace as of each Training Week since the plan began, oldest first; empty without LTHR. */
-  weeks: ThresholdWeek[];
 }
 
 /** What the runner has set for the app. */
@@ -106,25 +94,11 @@ export function createApp(db: Db, today: () => string, syncRunner: SyncRunner, s
     })
     .get("/api/easy", (c) => c.json<EasyResponse>({ runs: easyRuns(db) }))
     .get("/api/thresholds", (c) => {
-      const date = today();
       const analysedPlanned = analysedPlannedWorkouts(db);
       const qualityRuns = repLengthCards(analysedPlanned, analysedActivities(db)).flatMap((card) => card.runs);
-      const current = lthr(analysedPlanned, date);
-      const easy = easyRuns(db);
-      const line = paceLine(weekStart(date), qualityRuns, easy);
-      const lt1 = current === null ? null : lt1Hr(current, settings.lt1Hr);
-      const planStart = analysedPlanned[0]?.date;
       return c.json<ThresholdsResponse>({
-        lthr: current,
-        lt2Pace: current === null || line === null ? null : paceAt(line, current),
-        lt1Hr: lt1?.bpm ?? null,
-        lt1HrAssumed: lt1?.assumed ?? settings.lt1Hr === null,
-        lt1Pace: lt1 === null || line === null ? null : paceAt(line, lt1.bpm),
+        ...thresholdPaces(analysedPlanned, qualityRuns, easyRuns(db), today(), settings.lt1Hr),
         icuThresholdPace: loadRunThresholdPace(db),
-        weeks:
-          current === null || lt1 === null || planStart === undefined
-            ? []
-            : thresholdTrend(planStart, date, qualityRuns, easy, { lthr: current, lt1Hr: lt1.bpm }),
       });
     })
     .get("/api/sync", (c) => c.json(syncStatus()))
