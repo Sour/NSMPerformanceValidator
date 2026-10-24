@@ -203,11 +203,11 @@ describe("sync", () => {
     expect(loadRunThresholdPace(db)).toBe(4.47);
   });
 
-  it("keeps the last intervals.icu Threshold Pace, and still succeeds, when the athlete request fails", async () => {
+  it("clears the intervals.icu Threshold Pace, and still succeeds, when the athlete request fails", async () => {
     const db = openDb(":memory:");
     await sync(db, fakeClient(events, activities), "2026-10-02");
     await sync(db, fakeClient(events, activities, new Error("intervals.icu athlete failed: 500")), "2026-10-03");
-    expect(loadRunThresholdPace(db)).toBe(4.47);
+    expect(loadRunThresholdPace(db)).toBeNull();
     expect(loadSyncStatus(db)).toMatchObject({ error: null, syncedThrough: "2026-10-03" });
   });
 

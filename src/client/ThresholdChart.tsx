@@ -17,9 +17,10 @@ echarts.use([LineChart, GridComponent, LegendComponent, MarkLineComponent, Toolt
 export function ThresholdChart({ weeks, icuThresholdPace }: { weeks: ThresholdWeek[]; icuThresholdPace: number | null }) {
   const ref = useRef<HTMLDivElement>(null);
   const dark = usePrefersDark();
+  const hasData = weeks.some((w) => w.lt2Pace !== null);
 
   useEffect(() => {
-    if (!weeks.some((w) => w.lt2Pace !== null)) return;
+    if (!hasData) return;
     const el = ref.current!;
     const chart = echarts.init(el, null, { renderer: "svg" });
     chart.setOption(chartOption(weeks, icuThresholdPace, chartColors()));
@@ -29,9 +30,9 @@ export function ThresholdChart({ weeks, icuThresholdPace }: { weeks: ThresholdWe
       observer.disconnect();
       chart.dispose();
     };
-  }, [weeks, icuThresholdPace, dark]);
+  }, [weeks, icuThresholdPace, hasData, dark]);
 
-  if (!weeks.some((w) => w.lt2Pace !== null)) return null;
+  if (!hasData) return null;
   return <div ref={ref} className="threshold-chart" />;
 }
 

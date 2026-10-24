@@ -11,7 +11,7 @@ INTERVALS_ATHLETE_ID=i12345
 INTERVALS_API_KEY=...
 ```
 
-Optional: `DATABASE_PATH` (default `data/nsm.db`), `PORT` (default `3000`) `SYNC_INTERVAL` (default `30m`; also takes e.g. `1h` or `90s`) and `LT1_HR` (your LT1 heart rate in bpm, e.g. `155`, from a test; without it, LT1 HR is assumed to be 88% of LTHR).
+Optional: `DATABASE_PATH` (default `data/nsm.db`), `PORT` (default `3000`), `SYNC_INTERVAL` (default `30m`; also takes e.g. `1h` or `90s`) and `LT1_HR` (your LT1 heart rate in bpm, e.g. `155`, from a test; without it, LT1 HR is assumed to be 88% of LTHR).
 
 ```
 npm install

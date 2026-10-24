@@ -1,0 +1,48 @@
+{
+  "sportSettings": [
+    {
+      "types": [
+        "Ride",
+        "VirtualRide",
+        "MountainBikeRide",
+        "GravelRide",
+        "TrackRide",
+        "Cyclocross"
+      ],
+      "lthr": 178,
+      "max_hr": 201,
+      "threshold_pace": null,
+      "pace_units": null
+    },
+    {
+      "types": [
+        "Run",
+        "VirtualRun",
+        "TrailRun"
+      ],
+      "lthr": 181,
+      "max_hr": 201,
+      "threshold_pace": 2.9665275,
+      "pace_units": "MINS_MILE"
+    },
+    {
+      "types": [
+        "Swim",
+        "OpenWaterSwim"
+      ],
+      "lthr": 178,
+      "max_hr": 196,
+      "threshold_pace": 0.8333333,
+      "pace_units": "SECS_100M"
+    },
+    {
+      "types": [
+        "Other"
+      ],
+      "lthr": 178,
+      "max_hr": 196,
+      "threshold_pace": null,
+      "pace_units": null
+    }
+  ]
+}

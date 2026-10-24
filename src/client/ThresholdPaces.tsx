@@ -12,7 +12,7 @@ export function ThresholdPaces({ thresholds }: { thresholds: ThresholdsResponse 
         <Threshold name="LT1 Pace" pace={thresholds.lt1Pace}>
           {thresholds.lt1Hr !== null &&
             (thresholds.lt1HrAssumed
-              ? `at assumed LT1 HR ${formatHr(thresholds.lt1Hr)} (88% of LTHR; set LT1_HR to use your own)`
+              ? `at assumed LT1 HR ${formatHr(thresholds.lt1Hr)} (${Math.round((thresholds.lt1Hr / thresholds.lthr) * 100)}% of LTHR; set LT1_HR to use your own)`
               : `at LT1 HR ${formatHr(thresholds.lt1Hr)}`)}
         </Threshold>
         <Threshold name="LT2 Pace" pace={thresholds.lt2Pace}>

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { activityAverages, plannedRecovery, runThresholdPace } from "./intervals";
 
@@ -43,21 +44,17 @@ describe("plannedRecovery", () => {
   });
 });
 
-/** A `GET /athlete/{id}` response shaped per intervals.icu's SportSettings schema, trimmed to the fields that matter. */
-const athlete = {
-  id: "i12345",
-  sportSettings: [
-    { id: 1, types: ["Ride", "VirtualRide"], ftp: 250, lthr: 170, threshold_pace: null, pace_units: null },
-    { id: 2, types: ["Run", "VirtualRun", "TrailRun"], lthr: 181, threshold_pace: 4.47, pace_units: "MINS_MILE" },
-  ],
+/** A recorded intervals.icu `GET /athlete/{id}` response, trimmed to the sport settings' thresholds and units. */
+const athlete = JSON.parse(readFileSync(new URL("./fixtures/intervals/athlete.json", import.meta.url), "utf8")) as {
+  sportSettings: unknown[];
 };
 
 describe("runThresholdPace", () => {
-  it("is the Run sport's threshold pace, in metres per second whatever its display units", () => {
-    expect(runThresholdPace(athlete)).toBe(4.47);
+  it("is the Run sport's intervals.icu Threshold Pace, in metres per second though shown per mile (9:03 /mi)", () => {
+    expect(runThresholdPace(athlete)).toBe(2.9665275);
   });
 
-  it("is null when no sport covers Run, or Run has no threshold pace", () => {
+  it("is null when no sport covers Run, or Run has no intervals.icu Threshold Pace", () => {
     expect(runThresholdPace({ sportSettings: [athlete.sportSettings[0]] })).toBeNull();
     expect(runThresholdPace({ sportSettings: [{ types: ["Run"], threshold_pace: null }] })).toBeNull();
     expect(runThresholdPace({ sportSettings: [{ types: ["Run"], threshold_pace: 0 }] })).toBeNull();

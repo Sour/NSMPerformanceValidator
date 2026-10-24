@@ -42,7 +42,6 @@ _Avoid_: Aerobic threshold, easy ceiling
 A Quality Run is Complete when every planned Rep was run; otherwise it is Incomplete. Only Complete Quality Runs count toward progress; Incomplete ones are shown but not trended.
 _Avoid_: Valid, partial, failed
 
-
 **Over Target**:
 A Quality Run in which at least one Rep's average heart rate exceeded the top of the planned heart-rate target. It still counts toward progress but is flagged, because its pace overstates fitness.
 _Avoid_: Too hard, red zone
@@ -91,6 +90,10 @@ Grade-adjusted pace and average heart rate of an Easy Run or Long Run, tracked o
 **LT1 Pace / LT2 Pace**:
 The estimated grade-adjusted pace at which the runner's heart rate would sit at LT1 HR or LTHR. Both are read from a single pace-versus-heart-rate line fitted to the Rep GAP / Rep HR of Complete Quality Runs and the Easy GAP / Easy HR of Easy Runs and Long Runs over the last six Training Weeks. Over Target Quality Runs are included; Incomplete ones and Unplanned Runs are not.
 _Avoid_: Threshold pace (it does not say which threshold), race pace
+
+**Not enough data**:
+What LT1 Pace and LT2 Pace show for a Training Week whose recent runs cannot support an estimate: too few Complete Quality Runs, too few Easy Runs and Long Runs, or pace that does not get faster as heart rate rises.
+_Avoid_: No data, unknown
 
 **intervals.icu Threshold Pace**:
 The threshold pace in the runner's intervals.icu Run settings. It is shown only as a reference beside LT2 Pace, so the runner can see when that setting is out of date; it never feeds the estimate.
