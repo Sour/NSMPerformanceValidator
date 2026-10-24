@@ -34,6 +34,7 @@ _Avoid_: Interval, lap, set
 A Quality Run is Complete when every planned Rep was run; otherwise it is Incomplete. Only Complete Quality Runs count toward progress; Incomplete ones are shown but not trended.
 _Avoid_: Valid, partial, failed
 
+
 **Over Target**:
 A Quality Run in which at least one Rep's average heart rate exceeded the top of the planned heart-rate target. It still counts toward progress but is flagged, because its pace overstates fitness.
 _Avoid_: Too hard, red zone
@@ -62,6 +63,10 @@ _Avoid_: Extra run, bonus run
 **Missed**:
 A past Planned Workout with no Matched Activity.
 _Avoid_: Skipped
+
+**Shortfall Reason**:
+The runner's account of why a Planned Workout fell short: it was Missed (any Run Type), or its Matched Quality Run was Incomplete. A category from a fixed list plus an optional free-text note. It only annotates; it never changes whether a run counts toward progress, and it is shown only while the workout is still Missed or Incomplete.
+_Avoid_: Excuse, Incomplete Reason, Missed Reason, note (when the category is meant)
 
 ### Progress
 
