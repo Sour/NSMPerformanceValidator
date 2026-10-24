@@ -15,6 +15,10 @@ export interface RepLengthRun {
   format: QualityRunFormat;
   complete: boolean;
   repsRun: number;
+  /** Each Rep found, in Rep order. */
+  reps: RepDetail[];
+  /** The planned Rep numbers (1-based) that were not found; empty when Complete. */
+  missingReps: number[];
   /** Rep GAP as a grade-adjusted speed in metres per second; null without Reps. */
   repGap: number | null;
   repHr: number | null;
@@ -28,6 +32,16 @@ export interface RepLengthRun {
   recovery: number | null;
   /** How this run's rep count or recovery changed from the previous run with this Rep Length; null when neither did. */
   formatChange: FormatChange | null;
+}
+
+/** One Rep of a Quality Run. */
+export interface RepDetail {
+  /** Grade-adjusted speed in metres per second; null without GAP. */
+  gap: number | null;
+  /** Average heart rate in bpm; null without heart rate. */
+  hr: number | null;
+  /** The Rep's average heart rate exceeded the run's `hrCeiling`. */
+  overTarget: boolean;
 }
 
 /** What changed from the previous run with the same Rep Length: each field is the previous value, or null if unchanged. */
@@ -65,6 +79,12 @@ export function repLengthCards(planned: AnalysedPlannedWorkout[], activities: An
       format,
       complete: run.complete,
       repsRun: run.reps.length,
+      reps: run.reps.map((r) => ({
+        gap: r.gap,
+        hr: r.averageHeartrate,
+        overTarget: hrCeiling !== null && r.averageHeartrate !== null && r.averageHeartrate > hrCeiling,
+      })),
+      missingReps: Array.from({ length: format.reps - run.reps.length }, (_, i) => run.reps.length + i + 1),
       repGap: run.repGap,
       repHr: run.repHr,
       efficiency: run.efficiency,
