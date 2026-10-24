@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { openDb } from "./db";
 import type { IntervalsActivity, IntervalsClient, IntervalsEvent } from "./intervals";
-import { loadActivities, loadPlannedWorkouts, loadSyncStatus } from "./store";
+import { loadActivities, loadPlannedWorkouts, loadRunThresholdPace, loadSyncStatus } from "./store";
 import { sync } from "./sync";
 
 function event(id: number, date: string, name: string, description = "[NSM]", extra: Partial<IntervalsEvent> = {}): IntervalsEvent {
@@ -32,8 +32,15 @@ function activity(id: string, date: string, type: string, extra: Partial<Interva
 
 type FakeClient = IntervalsClient & { requests: string[] };
 
-/** Serves the given data by date range, recording each request as "events oldest..newest" or "intervals id". */
-function fakeClient(events: IntervalsEvent[], activities: IntervalsActivity[]): FakeClient {
+/**
+ * Serves the given data by date range, recording each request as "events oldest..newest", "intervals id" or "athlete".
+ * `athlete` is the athlete response, or an Error to fail that request with.
+ */
+function fakeClient(
+  events: IntervalsEvent[],
+  activities: IntervalsActivity[],
+  athlete: unknown = { sportSettings: [{ types: ["Run"], threshold_pace: 4.47 }] },
+): FakeClient {
   const requests: string[] = [];
   const within = (oldest: string, newest: string) => (x: { start_date_local: string }) =>
     x.start_date_local.slice(0, 10) >= oldest && x.start_date_local.slice(0, 10) <= newest;
@@ -50,6 +57,11 @@ function fakeClient(events: IntervalsEvent[], activities: IntervalsActivity[]): 
     intervals: async (activityId) => {
       requests.push(`intervals ${activityId}`);
       return intervalsResponse(activityId);
+    },
+    athlete: async () => {
+      requests.push("athlete");
+      if (athlete instanceof Error) throw athlete;
+      return athlete;
     },
   };
 }
@@ -144,6 +156,7 @@ describe("sync", () => {
     expect(client.requests.filter((r) => !r.startsWith("intervals"))).toEqual([
       "events 2026-10-08..2026-11-17",
       "activities 2026-10-08..2026-10-21",
+      "athlete",
     ]);
   });
 
@@ -156,6 +169,7 @@ describe("sync", () => {
       "events 2026-09-29..2026-10-31",
       "activities 2026-09-29..2026-10-04",
       "intervals i2",
+      "athlete",
     ]);
   });
 
@@ -180,6 +194,28 @@ describe("sync", () => {
       succeededAt: status?.finishedAt,
       syncedThrough: "2026-10-02",
     });
+  });
+
+  it("stores the intervals.icu Threshold Pace from the athlete's Run settings", async () => {
+    const db = openDb(":memory:");
+    expect(loadRunThresholdPace(db)).toBeNull();
+    await sync(db, fakeClient(events, activities), "2026-10-02");
+    expect(loadRunThresholdPace(db)).toBe(4.47);
+  });
+
+  it("keeps the last intervals.icu Threshold Pace, and still succeeds, when the athlete request fails", async () => {
+    const db = openDb(":memory:");
+    await sync(db, fakeClient(events, activities), "2026-10-02");
+    await sync(db, fakeClient(events, activities, new Error("intervals.icu athlete failed: 500")), "2026-10-03");
+    expect(loadRunThresholdPace(db)).toBe(4.47);
+    expect(loadSyncStatus(db)).toMatchObject({ error: null, syncedThrough: "2026-10-03" });
+  });
+
+  it("clears the intervals.icu Threshold Pace once Run has none", async () => {
+    const db = openDb(":memory:");
+    await sync(db, fakeClient(events, activities), "2026-10-02");
+    await sync(db, fakeClient(events, activities, { sportSettings: [] }), "2026-10-03");
+    expect(loadRunThresholdPace(db)).toBeNull();
   });
 
   it("records a sync that found no [NSM] Planned Workout without a synced-through date", async () => {

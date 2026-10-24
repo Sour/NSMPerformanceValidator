@@ -1,5 +1,5 @@
 import { LineChart } from "echarts/charts";
-import { GridComponent, LegendComponent, TooltipComponent } from "echarts/components";
+import { GridComponent, LegendComponent, MarkLineComponent, TooltipComponent } from "echarts/components";
 import * as echarts from "echarts/core";
 import { SVGRenderer } from "echarts/renderers";
 import { useEffect, useRef } from "react";
@@ -8,10 +8,13 @@ import type { ThresholdWeek } from "../domain/thresholdPace";
 import { formatDate, formatPace } from "./format";
 import { usePrefersDark } from "./usePrefersDark";
 
-echarts.use([LineChart, GridComponent, LegendComponent, TooltipComponent, SVGRenderer]);
+echarts.use([LineChart, GridComponent, LegendComponent, MarkLineComponent, TooltipComponent, SVGRenderer]);
 
-/** LT1 Pace and LT2 Pace as of each Training Week; a week with Not enough data is a gap. */
-export function ThresholdChart({ weeks }: { weeks: ThresholdWeek[] }) {
+/**
+ * LT1 Pace and LT2 Pace as of each Training Week; a week with Not enough data is a gap.
+ * The intervals.icu Threshold Pace, when there is one, is a flat reference line.
+ */
+export function ThresholdChart({ weeks, icuThresholdPace }: { weeks: ThresholdWeek[]; icuThresholdPace: number | null }) {
   const ref = useRef<HTMLDivElement>(null);
   const dark = usePrefersDark();
 
@@ -19,14 +22,14 @@ export function ThresholdChart({ weeks }: { weeks: ThresholdWeek[] }) {
     if (!weeks.some((w) => w.lt2Pace !== null)) return;
     const el = ref.current!;
     const chart = echarts.init(el, null, { renderer: "svg" });
-    chart.setOption(chartOption(weeks, chartColors()));
+    chart.setOption(chartOption(weeks, icuThresholdPace, chartColors()));
     const observer = new ResizeObserver(() => chart.resize());
     observer.observe(el);
     return () => {
       observer.disconnect();
       chart.dispose();
     };
-  }, [weeks, dark]);
+  }, [weeks, icuThresholdPace, dark]);
 
   if (!weeks.some((w) => w.lt2Pace !== null)) return null;
   return <div ref={ref} className="threshold-chart" />;
@@ -59,7 +62,7 @@ const SERIES = [
   { name: "LT2 Pace", pace: (w: ThresholdWeek) => w.lt2Pace, color: (c: ChartColors) => c.lt2, symbol: "diamond" },
 ] as const;
 
-function chartOption(weeks: ThresholdWeek[], c: ChartColors): echarts.EChartsCoreOption {
+function chartOption(weeks: ThresholdWeek[], icuThresholdPace: number | null, c: ChartColors): echarts.EChartsCoreOption {
   const axisLabel = { color: c.muted, fontSize: 11 };
   return {
     animation: false,
@@ -88,6 +91,11 @@ function chartOption(weeks: ThresholdWeek[], c: ChartColors): echarts.EChartsCor
       inverse: true,
       nameLocation: "start",
       scale: true,
+      // Stretch the axis to the intervals.icu reference line, which the series' own extent leaves out.
+      ...(icuThresholdPace !== null && {
+        min: (v: { min: number }) => Math.floor(Math.min(v.min, secondsPerMile(icuThresholdPace)) - 5),
+        max: (v: { max: number }) => Math.ceil(Math.max(v.max, secondsPerMile(icuThresholdPace)) + 5),
+      }),
       minInterval: 1,
       axisLabel: { ...axisLabel, formatter: (v: number) => formatDuration(v) },
       splitLine: { lineStyle: { color: c.grid } },
@@ -108,6 +116,22 @@ function chartOption(weeks: ThresholdWeek[], c: ChartColors): echarts.EChartsCor
       itemStyle: { borderColor: c.surface, borderWidth: 1 },
       lineStyle: { width: 2 },
       emphasis: { disabled: true },
+      ...(s.name === "LT2 Pace" && icuThresholdPace !== null
+        ? {
+            markLine: {
+              silent: true,
+              symbol: "none",
+              lineStyle: { color: c.muted, type: "dashed", width: 1 },
+              label: {
+                color: c.muted,
+                fontSize: 11,
+                position: "insideEndTop",
+                formatter: `intervals.icu ${formatPace(icuThresholdPace)}`,
+              },
+              data: [{ yAxis: secondsPerMile(icuThresholdPace) }],
+            },
+          }
+        : {}),
     })),
   };
 }

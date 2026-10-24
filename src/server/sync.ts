@@ -3,13 +3,14 @@ import { isRun, matchActivities } from "../domain/matching";
 import { runType } from "../domain/runType";
 import type { Db } from "./db";
 import {
+  runThresholdPace,
   toActivity,
   toPlannedWorkout,
   type IntervalsActivity,
   type IntervalsClient,
   type IntervalsEvent,
 } from "./intervals";
-import { loadPlannedWorkouts, loadSyncStatus, recordSyncWithNothingToStore, saveSync } from "./store";
+import { loadPlannedWorkouts, loadSyncStatus, recordSyncWithNothingToStore, saveRunThresholdPace, saveSync } from "./store";
 
 /** Marks a Planned Workout as part of the NSM plan, in its intervals.icu description. */
 const NSM_TAG = "[NSM]";
@@ -64,7 +65,22 @@ export async function sync(db: Db, client: IntervalsClient, today: string): Prom
     finishedAt: new Date().toISOString(),
     syncedThrough: today,
   });
+  await syncRunThresholdPace(db, client);
   return { nsmStart, plannedWorkouts: planned.length, activities: runningActivities.length };
+}
+
+/**
+ * Stores the intervals.icu Threshold Pace from the athlete's Run settings. It is only a reference beside LT2 Pace,
+ * so a failed request keeps the last one stored rather than failing the sync.
+ */
+async function syncRunThresholdPace(db: Db, client: IntervalsClient): Promise<void> {
+  let athlete: unknown;
+  try {
+    athlete = await client.athlete();
+  } catch {
+    return;
+  }
+  saveRunThresholdPace(db, runThresholdPace(athlete));
 }
 
 /** The Activities Matched to a Quality Run, whose Reps are read from their detected intervals. */
