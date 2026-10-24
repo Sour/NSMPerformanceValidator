@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PlannedWorkout } from "./matching";
-import { lt1Hr, lthr, paceAt, paceLine, type EasyPoint, type QualityPoint } from "./thresholdPace";
+import { lt1Hr, lthr, paceAt, paceLine, thresholdTrend, type EasyPoint, type QualityPoint } from "./thresholdPace";
 
 function planned(id: number, date: string, name: string): PlannedWorkout {
   return { id, date, name, pairedActivityId: null };
@@ -102,5 +102,22 @@ describe("paceLine", () => {
   it("is Not enough data when pace does not get faster as heart rate rises", () => {
     const slower = [quality("2026-10-20", 165, 2.2), quality("2026-10-22", 170, 2.1)];
     expect(paceLine("2026-10-19", slower, onTheLine.easy)).toBeNull();
+  });
+});
+
+describe("thresholdTrend", () => {
+  it("has LT1 Pace and LT2 Pace for each Training Week, measured against today's LT1 HR and LTHR", () => {
+    const weeks = thresholdTrend("2026-10-14", "2026-10-23", onTheLine.quality, onTheLine.easy, { lthr: 180, lt1Hr: 155 });
+    expect(weeks.map((w) => w.start)).toEqual(["2026-10-12", "2026-10-19"]);
+    expect(weeks[1]!.lt2Pace).toBeCloseTo(3.1, 10);
+    expect(weeks[1]!.lt1Pace).toBeCloseTo(2.6, 10);
+  });
+
+  it("leaves a gap for a week without enough data, before the runs or after they leave the window", () => {
+    const weeks = thresholdTrend("2026-10-12", "2026-11-30", onTheLine.quality, onTheLine.easy, { lthr: 180, lt1Hr: 155 });
+    expect(weeks[0]).toEqual({ start: "2026-10-12", lt1Pace: null, lt2Pace: null });
+    // The Training Week of 23 Nov still reads back to 19 Oct; the week of 30 Nov does not.
+    expect(weeks.find((w) => w.start === "2026-11-23")!.lt2Pace).toBeCloseTo(3.1, 10);
+    expect(weeks.at(-1)).toEqual({ start: "2026-11-30", lt1Pace: null, lt2Pace: null });
   });
 });

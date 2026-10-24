@@ -1,6 +1,7 @@
 import { addDays } from "./localDate";
 import type { PlannedWorkout } from "./matching";
 import { heartRateTarget, qualityRunFormat } from "./qualityRun";
+import { weekStart } from "./trainingWeek";
 
 /** A Quality Run's Rep GAP and Rep HR, the points it adds to the pace line. */
 export interface QualityPoint {
@@ -23,6 +24,16 @@ export interface EasyPoint {
 export interface PaceLine {
   intercept: number;
   slope: number;
+}
+
+/** One Training Week of the LT1 Pace / LT2 Pace trend; each pace null with Not enough data. */
+export interface ThresholdWeek {
+  /** Monday, YYYY-MM-DD. */
+  start: string;
+  /** Metres per second. */
+  lt1Pace: number | null;
+  /** Metres per second. */
+  lt2Pace: number | null;
 }
 
 /** A Rep's heart-rate target is 90–98% of LTHR. */
@@ -80,6 +91,30 @@ export function paceLine(week: string, quality: QualityPoint[], easy: EasyPoint[
 /** The grade-adjusted speed, in metres per second, `line` gives at heart rate `hr`. */
 export function paceAt(line: PaceLine, hr: number): number {
   return line.intercept + line.slope * hr;
+}
+
+/**
+ * LT1 Pace and LT2 Pace as of each Training Week from the one containing `from` through the one containing `today`,
+ * each from that week's pace line. Every week is measured against today's LT1 HR and LTHR, in `hr`,
+ * so a change of LTHR in the plan never shows as a jump.
+ */
+export function thresholdTrend(
+  from: string,
+  today: string,
+  quality: QualityPoint[],
+  easy: EasyPoint[],
+  hr: { lthr: number; lt1Hr: number },
+): ThresholdWeek[] {
+  const weeks: ThresholdWeek[] = [];
+  for (let start = weekStart(from); start <= today; start = addDays(start, 7)) {
+    const line = paceLine(start, quality, easy);
+    weeks.push({
+      start,
+      lt1Pace: line === null ? null : paceAt(line, hr.lt1Hr),
+      lt2Pace: line === null ? null : paceAt(line, hr.lthr),
+    });
+  }
+  return weeks;
 }
 
 function leastSquares(points: { hr: number; gap: number }[]): PaceLine | null {

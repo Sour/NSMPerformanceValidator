@@ -285,6 +285,13 @@ describe("/api/thresholds", () => {
     expect(thresholds.lt2Pace).toBeNull();
     expect(thresholds.lt1Pace).toBeNull();
   });
+
+  it("has the weekly trend from the first Planned Workout's Training Week through this one", async () => {
+    const app = createApp(dbWithRuns(2), () => "2026-10-23", idleRunner());
+    const { weeks } = (await (await app.request("/api/thresholds")).json()) as ThresholdsResponse;
+    expect(weeks.map((w) => w.start)).toEqual(["2026-10-19"]);
+    expect(weeks[0]!.lt2Pace).toBeCloseTo(3.117, 3);
+  });
 });
 
 function idleRunner(sync = () => {}): SyncRunner {

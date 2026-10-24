@@ -6,7 +6,7 @@ import {
   type AnalysedPlannedWorkout,
   type RepLengthCard,
 } from "../domain/repProgress";
-import { lt1Hr, lthr, paceAt, paceLine } from "../domain/thresholdPace";
+import { lt1Hr, lthr, paceAt, paceLine, thresholdTrend, type ThresholdWeek } from "../domain/thresholdPace";
 import { trainingWeek, weekStart, type TrainingDay, type TrainingWeek, type WeekWorkout } from "../domain/trainingWeek";
 import { weeklyVolume, type VolumeWeek } from "../domain/weeklyVolume";
 import type { Db } from "./db";
@@ -43,6 +43,8 @@ export interface ThresholdsResponse {
   lt1HrAssumed: boolean;
   /** LT1 Pace as a grade-adjusted speed in metres per second; null without LTHR or with Not enough data. */
   lt1Pace: number | null;
+  /** LT1 Pace and LT2 Pace as of each Training Week since the plan began, oldest first; empty without LTHR. */
+  weeks: ThresholdWeek[];
 }
 
 /** What the runner has set for the app. */
@@ -106,14 +108,20 @@ export function createApp(db: Db, today: () => string, syncRunner: SyncRunner, s
       const analysedPlanned = analysedPlannedWorkouts(db);
       const qualityRuns = repLengthCards(analysedPlanned, analysedActivities(db)).flatMap((card) => card.runs);
       const current = lthr(analysedPlanned, date);
-      const line = paceLine(weekStart(date), qualityRuns, easyRuns(db));
+      const easy = easyRuns(db);
+      const line = paceLine(weekStart(date), qualityRuns, easy);
       const lt1 = current === null ? null : lt1Hr(current, settings.lt1Hr);
+      const planStart = analysedPlanned[0]?.date;
       return c.json<ThresholdsResponse>({
         lthr: current,
         lt2Pace: current === null || line === null ? null : paceAt(line, current),
         lt1Hr: lt1?.bpm ?? null,
         lt1HrAssumed: lt1?.assumed ?? settings.lt1Hr === null,
         lt1Pace: lt1 === null || line === null ? null : paceAt(line, lt1.bpm),
+        weeks:
+          current === null || lt1 === null || planStart === undefined
+            ? []
+            : thresholdTrend(planStart, date, qualityRuns, easy, { lthr: current, lt1Hr: lt1.bpm }),
       });
     })
     .get("/api/sync", (c) => c.json(syncStatus()))
