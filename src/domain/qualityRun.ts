@@ -47,10 +47,15 @@ export function qualityRunFormat(plannedWorkoutName: string): QualityRunFormat |
   return { reps: Number(match[1]), repLength: Number(match[2]) * 60 + Number(match[3]) };
 }
 
+/** The heart-rate target a Planned Workout's name gives, in bpm; null when it names none. */
+export function heartRateTarget(plannedWorkoutName: string): { low: number; high: number } | null {
+  const match = HEART_RATE_TARGET.exec(plannedWorkoutName);
+  return match ? { low: Number(match[1]), high: Number(match[2]) } : null;
+}
+
 /** The top of the heart-rate target a Planned Workout's name gives, in bpm; null when it names none. */
 export function heartRateCeiling(plannedWorkoutName: string): number | null {
-  const match = HEART_RATE_TARGET.exec(plannedWorkoutName);
-  return match ? Number(match[2]) : null;
+  return heartRateTarget(plannedWorkoutName)?.high ?? null;
 }
 
 /**
