@@ -4,6 +4,7 @@ import type {
   EasyResponse,
   ProgressResponse,
   SyncStatusResponse,
+  ThresholdsResponse,
   VolumeResponse,
   WeekActivity,
   WeekResponse,
@@ -11,6 +12,7 @@ import type {
 import { EasyChart } from "./EasyChart";
 import { formatDate, formatDateTime, formatVolume } from "./format";
 import { RepCards } from "./RepCards";
+import { ThresholdPaces } from "./ThresholdPaces";
 import { VolumeChart } from "./VolumeChart";
 
 export function App() {
@@ -18,6 +20,7 @@ export function App() {
   const [progress, setProgress] = useState<ProgressResponse | null>(null);
   const [volume, setVolume] = useState<VolumeResponse | null>(null);
   const [easy, setEasy] = useState<EasyResponse | null>(null);
+  const [thresholds, setThresholds] = useState<ThresholdsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = () =>
@@ -26,6 +29,7 @@ export function App() {
       getJson<ProgressResponse>("/api/progress").then(setProgress),
       getJson<VolumeResponse>("/api/volume").then(setVolume),
       getJson<EasyResponse>("/api/easy").then(setEasy),
+      getJson<ThresholdsResponse>("/api/thresholds").then(setThresholds),
     ]).then(() => {});
 
   useEffect(() => {
@@ -33,12 +37,15 @@ export function App() {
   }, []);
 
   if (error) return <main><p className="error">Could not load: {error}</p></main>;
-  if (!week || !progress || !volume || !easy) return <main><p>Loading…</p></main>;
+  if (!week || !progress || !volume || !easy || !thresholds) return <main><p>Loading…</p></main>;
 
   return (
     <main>
       <SyncBar onSynced={load} />
-      <h1>Rep GAP</h1>
+      <h1>LT2 Pace</h1>
+      <ThresholdPaces thresholds={thresholds} />
+
+      <h1 className="section-title">Rep GAP</h1>
       <RepCards cards={progress.cards} />
 
       <h1 className="section-title">Weekly Volume</h1>

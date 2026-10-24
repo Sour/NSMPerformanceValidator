@@ -6,7 +6,8 @@ import {
   type AnalysedPlannedWorkout,
   type RepLengthCard,
 } from "../domain/repProgress";
-import { trainingWeek, type TrainingDay, type TrainingWeek, type WeekWorkout } from "../domain/trainingWeek";
+import { lthr, paceAt, paceLine } from "../domain/thresholdPace";
+import { trainingWeek, weekStart, type TrainingDay, type TrainingWeek, type WeekWorkout } from "../domain/trainingWeek";
 import { weeklyVolume, type VolumeWeek } from "../domain/weeklyVolume";
 import type { Db } from "./db";
 import { activityAverages, detectedIntervals, plannedRecovery } from "./intervals";
@@ -30,6 +31,12 @@ export interface VolumeResponse {
 export interface EasyResponse {
   /** Oldest first. */
   runs: EasyTrendRun[];
+}
+export interface ThresholdsResponse {
+  /** The current LTHR in bpm; null when no Quality Run names a heart-rate target. */
+  lthr: number | null;
+  /** LT2 Pace as a grade-adjusted speed in metres per second; null without LTHR or with Not enough data. */
+  lt2Pace: number | null;
 }
 export interface SyncStatusResponse {
   /** When the latest sync finished, as an ISO timestamp. */
@@ -81,16 +88,30 @@ export function createApp(db: Db, today: () => string, syncRunner: SyncRunner) {
       const activities = loadActivities(db).map(({ raw: _, intervals: __, ...a }) => a);
       return c.json<VolumeResponse>({ weeks: weeklyVolume(today(), planned, activities) });
     })
-    .get("/api/easy", (c) => {
-      const planned = loadPlannedWorkouts(db).map(({ raw: _, ...p }) => p);
-      const activities = loadActivities(db).map(({ raw, intervals: _, ...a }) => ({ ...a, ...activityAverages(raw) }));
-      return c.json<EasyResponse>({ runs: easyTrend(planned, activities) });
+    .get("/api/easy", (c) => c.json<EasyResponse>({ runs: easyRuns(db) }))
+    .get("/api/thresholds", (c) => {
+      const date = today();
+      const analysedPlanned = analysedPlannedWorkouts(db);
+      const qualityRuns = repLengthCards(analysedPlanned, analysedActivities(db)).flatMap((card) => card.runs);
+      const current = lthr(analysedPlanned, date);
+      const line = paceLine(weekStart(date), qualityRuns, easyRuns(db));
+      return c.json<ThresholdsResponse>({
+        lthr: current,
+        lt2Pace: current === null || line === null ? null : paceAt(line, current),
+      });
     })
     .get("/api/sync", (c) => c.json(syncStatus()))
     .post("/api/sync", async (c) => {
       await syncRunner.run();
       return c.json(syncStatus());
     });
+}
+
+/** Every Matched Easy Run and Long Run with its Easy GAP and Easy HR, oldest first. */
+function easyRuns(db: Db): EasyTrendRun[] {
+  const planned = loadPlannedWorkouts(db).map(({ raw: _, ...p }) => p);
+  const activities = loadActivities(db).map(({ raw, intervals: _, ...a }) => ({ ...a, ...activityAverages(raw) }));
+  return easyTrend(planned, activities);
 }
 
 /** Stored Planned Workouts without their raw response, with their planned recovery read. */
