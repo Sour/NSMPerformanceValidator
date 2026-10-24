@@ -1,3 +1,4 @@
+import type { EasyAverages } from "../domain/easyTrend";
 import { localDate } from "../domain/localDate";
 import type { Activity, PlannedWorkout } from "../domain/matching";
 import type { DetectedInterval } from "../domain/qualityRun";
@@ -41,12 +42,15 @@ export function toActivity(a: IntervalsActivity): Activity {
   };
 }
 
-/** An Activity's whole-run Easy GAP and Easy HR, read from its intervals.icu activity response; each null when not recorded. */
-export function activityAverages(activity: unknown): { gap: number | null; averageHeartrate: number | null } {
+/**
+ * An Activity's whole-run Easy GAP and Easy HR, read from its intervals.icu activity response; each null when not recorded.
+ * A GAP of zero, as from a treadmill run without a foot pod, is not recorded either: it has no pace.
+ */
+export function activityAverages(activity: unknown): EasyAverages {
   const a = (activity ?? {}) as { gap?: unknown; average_heartrate?: unknown };
   return {
-    gap: typeof a.gap === "number" ? a.gap : null,
-    averageHeartrate: typeof a.average_heartrate === "number" ? a.average_heartrate : null,
+    easyGap: typeof a.gap === "number" && a.gap > 0 ? a.gap : null,
+    easyHr: typeof a.average_heartrate === "number" ? a.average_heartrate : null,
   };
 }
 

@@ -5,7 +5,7 @@ import { SVGRenderer } from "echarts/renderers";
 import { useEffect, useRef } from "react";
 import type { EasyRunType, EasyTrendRun } from "../domain/easyTrend";
 import { formatDuration, secondsPerMile } from "../domain/pace";
-import { escapeHtml, formatDate } from "./format";
+import { escapeHtml, formatDate, formatHr, formatPace } from "./format";
 import { usePrefersDark } from "./usePrefersDark";
 
 echarts.use([LineChart, GridComponent, LegendComponent, TooltipComponent, SVGRenderer]);
@@ -80,7 +80,7 @@ function chartOption(runs: EasyTrendRun[], c: ChartColors): echarts.EChartsCoreO
   /** One line per Run Type and metric; each point keeps its run's id for the tooltip. */
   const series = (runType: EasyRunType, metric: "GAP" | "HR") => {
     const value = (r: EasyTrendRun) =>
-      metric === "GAP" ? (r.gap === null ? null : secondsPerMile(r.gap)) : r.averageHeartrate;
+      metric === "GAP" ? (r.easyGap === null ? null : secondsPerMile(r.easyGap)) : r.easyHr;
     const color = metric === "GAP" ? c.gap : c.hr;
     return {
       name: `${runType} ${metric}`,
@@ -163,8 +163,8 @@ function chartOption(runs: EasyTrendRun[], c: ChartColors): echarts.EChartsCoreO
 function runTooltip(r: EasyTrendRun | undefined): string {
   if (!r) return "";
   const lines = [`<strong>${formatDate(r.date)}</strong> · ${r.runType}`, escapeHtml(r.name)];
-  if (r.gap !== null) lines.push(`Easy GAP ${formatDuration(secondsPerMile(r.gap))} /mi`);
-  if (r.averageHeartrate !== null) lines.push(`Easy HR ${Math.round(r.averageHeartrate)} bpm`);
+  if (r.easyGap !== null) lines.push(`Easy GAP ${formatPace(r.easyGap)}`);
+  if (r.easyHr !== null) lines.push(`Easy HR ${formatHr(r.easyHr)}`);
   return lines.join("<br>");
 }
 
@@ -186,8 +186,8 @@ function EasyTable({ runs }: { runs: EasyTrendRun[] }) {
             <tr key={r.activityId}>
               <td>{formatDate(r.date)}</td>
               <td>{r.runType}</td>
-              <td>{r.gap === null ? "–" : `${formatDuration(secondsPerMile(r.gap))} /mi`}</td>
-              <td>{r.averageHeartrate === null ? "–" : `${Math.round(r.averageHeartrate)} bpm`}</td>
+              <td>{r.easyGap === null ? "–" : formatPace(r.easyGap)}</td>
+              <td>{r.easyHr === null ? "–" : formatHr(r.easyHr)}</td>
             </tr>
           ))}
         </tbody>

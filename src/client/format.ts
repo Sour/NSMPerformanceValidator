@@ -1,4 +1,4 @@
-import { formatDuration, miles } from "../domain/pace";
+import { formatDuration, miles, secondsPerMile } from "../domain/pace";
 import type { Volume } from "../domain/weeklyVolume";
 
 /** A Format as written in the plan, e.g. "4 × 6:00, 1:30 rec". */
@@ -20,6 +20,16 @@ export function formatMiles(metres: number): string {
 /** A Volume as distance and time, e.g. "6.2 mi · 1:30". */
 export function formatVolume(volume: Volume): string {
   return `${formatMiles(volume.distance)} · ${formatHoursMinutes(volume.movingTime)}`;
+}
+
+/** A grade-adjusted speed in metres per second as a pace, e.g. "10:42 /mi". */
+export function formatPace(metresPerSecond: number): string {
+  return `${formatDuration(secondsPerMile(metresPerSecond))} /mi`;
+}
+
+/** A heart rate as whole beats per minute, e.g. "139 bpm". */
+export function formatHr(bpm: number): string {
+  return `${Math.round(bpm)} bpm`;
 }
 
 /** Text made safe to put in a chart tooltip's HTML. */

@@ -196,7 +196,7 @@ describe("/api/easy", () => {
 
     const { runs } = (await (await app.request("/api/easy")).json()) as EasyResponse;
 
-    expect(runs.map((r) => [r.activityId, r.runType, r.gap, r.averageHeartrate])).toEqual([
+    expect(runs.map((r) => [r.activityId, r.runType, r.easyGap, r.easyHr])).toEqual([
       ["easy", "Easy Run", 2.36, 139],
       ["long", "Long Run", 2.2, null],
     ]);

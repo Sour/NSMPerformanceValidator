@@ -6,8 +6,8 @@ function planned(id: number, date: string, name: string): PlannedWorkout {
   return { id, date, name, pairedActivityId: null };
 }
 
-function run(id: string, date: string, gap: number | null, averageHeartrate: number | null): EasyActivity {
-  return { id, date, type: "Run", name: "Everett Running", movingTime: 2400, pairedEventId: null, gap, averageHeartrate };
+function run(id: string, date: string, easyGap: number | null, easyHr: number | null): EasyActivity {
+  return { id, date, type: "Run", name: "Everett Running", movingTime: 2400, pairedEventId: null, easyGap, easyHr };
 }
 
 describe("easyTrend", () => {
@@ -15,8 +15,8 @@ describe("easyTrend", () => {
     const plan = [planned(2, "2026-10-24", "Long Run"), planned(1, "2026-10-20", "Easy Run")];
     const activities = [run("long", "2026-10-24", 2.2, 138), run("easy", "2026-10-20", 2.36, 139)];
     expect(easyTrend(plan, activities)).toEqual([
-      { activityId: "easy", date: "2026-10-20", name: "Everett Running", runType: "Easy Run", gap: 2.36, averageHeartrate: 139 },
-      { activityId: "long", date: "2026-10-24", name: "Everett Running", runType: "Long Run", gap: 2.2, averageHeartrate: 138 },
+      { activityId: "easy", date: "2026-10-20", name: "Everett Running", runType: "Easy Run", easyGap: 2.36, easyHr: 139 },
+      { activityId: "long", date: "2026-10-24", name: "Everett Running", runType: "Long Run", easyGap: 2.2, easyHr: 138 },
     ]);
   });
 
@@ -32,6 +32,6 @@ describe("easyTrend", () => {
 
   it("keeps a run without GAP or heart rate, with them null", () => {
     const [easy] = easyTrend([planned(1, "2026-10-20", "Easy Run")], [run("no-hr", "2026-10-20", 2.3, null)]);
-    expect(easy).toMatchObject({ activityId: "no-hr", gap: 2.3, averageHeartrate: null });
+    expect(easy).toMatchObject({ activityId: "no-hr", easyGap: 2.3, easyHr: null });
   });
 });

@@ -44,7 +44,7 @@ export function App() {
       <h1 className="section-title">Weekly Volume</h1>
       <VolumeChart weeks={volume.weeks} />
 
-      <h1 className="section-title">Easy GAP</h1>
+      <h1 className="section-title">Easy GAP / Easy HR</h1>
       <EasyChart runs={easy.runs} />
 
       <h1 className="section-title">This Training Week</h1>
