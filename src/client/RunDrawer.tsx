@@ -17,6 +17,7 @@ export function RunDrawer({ run, onClose }: { run: RepLengthRun; onClose: () => 
 
   const gaps = run.reps.flatMap((r) => (r.gap === null ? [] : [r.gap]));
   const hrs = run.reps.flatMap((r) => (r.hr === null ? [] : [r.hr]));
+  const missing = run.format.reps - run.reps.length;
 
   return (
     <dialog
@@ -52,15 +53,14 @@ export function RunDrawer({ run, onClose }: { run: RepLengthRun; onClose: () => 
 
         {run.overTarget && (
           <p className="note over-target">
-            Over Target: {repList(run.reps.flatMap((r, i) => (r.overTarget ? [i + 1] : [])))} averaged above{" "}
+            Over Target: {repList(run.reps.flatMap((r, i) => (r.aboveCeiling ? [i + 1] : [])))} averaged above{" "}
             {run.hrCeiling} bpm, so this pace overstates fitness.
           </p>
         )}
         {!run.complete && (
           <p className="note incomplete">
-            Incomplete:{" "}
-            {run.reps.length === 0 ? "no Reps found" : `${repList(run.missingReps)} of ${run.format.reps} not found`}, so
-            this run is not trended.
+            Incomplete: {missing === run.format.reps ? "no Reps" : `${missing} of ${run.format.reps} planned Reps not`}{" "}
+            found, so this run is not trended.
           </p>
         )}
 
@@ -68,7 +68,7 @@ export function RunDrawer({ run, onClose }: { run: RepLengthRun; onClose: () => 
           {run.reps.length > 0 && (
             <li className="rep-bars-head" aria-hidden="true">
               <span />
-              <span>GAP /mi</span>
+              <span>GAP /mi · longer is faster</span>
               <span>HR bpm</span>
             </li>
           )}
@@ -83,16 +83,17 @@ export function RunDrawer({ run, onClose }: { run: RepLengthRun; onClose: () => 
               <Bar
                 width={r.hr === null ? null : barWidth(r.hr, hrs)}
                 label={r.hr === null ? "–" : String(Math.round(r.hr))}
-                className={r.overTarget ? "hr over-target" : "hr"}
+                className={r.aboveCeiling ? "hr over-target" : "hr"}
               />
             </li>
           ))}
-          {run.missingReps.map((n) => (
-            <li key={`missing-${n}`} className="missing">
-              <span className="rep-label">Rep {n}</span>
-              <span className="not-found">Not found</span>
+          {missing > 0 && (
+            <li className="missing">
+              <span className="not-found">
+                {missing} {missing === 1 ? "Rep" : "Reps"} not found
+              </span>
             </li>
-          ))}
+          )}
         </ol>
 
         <a className="activity-link" href={activityUrl(run.activityId)} target="_blank" rel="noreferrer">

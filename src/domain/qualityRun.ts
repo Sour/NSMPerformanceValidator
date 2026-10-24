@@ -75,8 +75,13 @@ export function qualityRun(
     repGap: timeWeightedMean(reps, (r) => r.gap),
     repHr: timeWeightedMean(reps, (r) => r.averageHeartrate),
     efficiency: efficiency(reps),
-    overTarget: hrCeiling !== null && reps.some((r) => r.averageHeartrate !== null && r.averageHeartrate > hrCeiling),
+    overTarget: reps.some((r) => aboveCeiling(r, hrCeiling)),
   };
+}
+
+/** A Rep's average heart rate exceeded `hrCeiling`, the top of the planned heart-rate target; never when it names none. */
+export function aboveCeiling(rep: DetectedInterval, hrCeiling: number | null): boolean {
+  return hrCeiling !== null && rep.averageHeartrate !== null && rep.averageHeartrate > hrCeiling;
 }
 
 /** Grade-adjusted metres per heartbeat over the Reps that have both GAP and heart rate. */

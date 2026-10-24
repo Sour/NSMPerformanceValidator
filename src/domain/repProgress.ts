@@ -1,5 +1,5 @@
 import { matchActivities, type Activity, type PlannedWorkout } from "./matching";
-import { heartRateCeiling, qualityRun, qualityRunFormat, type DetectedInterval, type QualityRunFormat } from "./qualityRun";
+import { aboveCeiling, heartRateCeiling, qualityRun, qualityRunFormat, type DetectedInterval, type QualityRunFormat } from "./qualityRun";
 
 /** An Activity with the intervals intervals.icu detected in it; null until they have been fetched. */
 export type AnalysedActivity = Activity & { intervals: DetectedInterval[] | null };
@@ -15,10 +15,11 @@ export interface RepLengthRun {
   format: QualityRunFormat;
   complete: boolean;
   repsRun: number;
-  /** Each Rep found, in Rep order. */
+  /**
+   * Each Rep found, in Rep order. An Incomplete run's missing Reps may have fallen anywhere among them,
+   * since a Rep cut short is not told apart from any other work interval.
+   */
   reps: RepDetail[];
-  /** The planned Rep numbers (1-based) that were not found; empty when Complete. */
-  missingReps: number[];
   /** Rep GAP as a grade-adjusted speed in metres per second; null without Reps. */
   repGap: number | null;
   repHr: number | null;
@@ -40,8 +41,8 @@ export interface RepDetail {
   gap: number | null;
   /** Average heart rate in bpm; null without heart rate. */
   hr: number | null;
-  /** The Rep's average heart rate exceeded the run's `hrCeiling`. */
-  overTarget: boolean;
+  /** The Rep's average heart rate exceeded the run's `hrCeiling`; any such Rep makes the run Over Target. */
+  aboveCeiling: boolean;
 }
 
 /** What changed from the previous run with the same Rep Length: each field is the previous value, or null if unchanged. */
@@ -79,12 +80,7 @@ export function repLengthCards(planned: AnalysedPlannedWorkout[], activities: An
       format,
       complete: run.complete,
       repsRun: run.reps.length,
-      reps: run.reps.map((r) => ({
-        gap: r.gap,
-        hr: r.averageHeartrate,
-        overTarget: hrCeiling !== null && r.averageHeartrate !== null && r.averageHeartrate > hrCeiling,
-      })),
-      missingReps: Array.from({ length: format.reps - run.reps.length }, (_, i) => run.reps.length + i + 1),
+      reps: run.reps.map((r) => ({ gap: r.gap, hr: r.averageHeartrate, aboveCeiling: aboveCeiling(r, hrCeiling) })),
       repGap: run.repGap,
       repHr: run.repHr,
       efficiency: run.efficiency,
