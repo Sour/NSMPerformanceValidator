@@ -83,12 +83,24 @@ export function detectedIntervals(response: unknown): DetectedInterval[] {
   }));
 }
 
+/**
+ * The intervals.icu Threshold Pace of the athlete's Run settings, read from a `GET /athlete/{id}` response:
+ * the `threshold_pace` of the sport settings covering Run, always metres per second. Null when there is none.
+ */
+export function runThresholdPace(athlete: unknown): number | null {
+  const settings = (athlete as { sportSettings?: { types?: unknown; threshold_pace?: unknown }[] } | null)?.sportSettings;
+  const run = (Array.isArray(settings) ? settings : []).find((s) => Array.isArray(s.types) && s.types.includes("Run"));
+  return typeof run?.threshold_pace === "number" && run.threshold_pace > 0 ? run.threshold_pace : null;
+}
+
 /** Read access to one athlete on intervals.icu. Dates are inclusive YYYY-MM-DD local dates. */
 export interface IntervalsClient {
   events(oldest: string, newest: string): Promise<IntervalsEvent[]>;
   activities(oldest: string, newest: string): Promise<IntervalsActivity[]>;
   /** The intervals intervals.icu detected in one Activity; read it with `detectedIntervals`. */
   intervals(activityId: string): Promise<unknown>;
+  /** The athlete with their sport settings; read it with `runThresholdPace`. */
+  athlete(): Promise<unknown>;
 }
 
 /** How much of an error response to keep; enough for intervals.icu's message, not a whole HTML page. */
@@ -110,5 +122,6 @@ export function createIntervalsClient(athleteId: string, apiKey: string): Interv
     events: (oldest, newest) => get(`${athlete}/events`, { oldest, newest, category: "WORKOUT" }),
     activities: (oldest, newest) => get(`${athlete}/activities`, { oldest, newest }),
     intervals: (activityId) => get(`activity/${encodeURIComponent(activityId)}/intervals`),
+    athlete: () => get(athlete),
   };
 }

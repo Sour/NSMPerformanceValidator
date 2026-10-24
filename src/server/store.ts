@@ -1,7 +1,7 @@
 import { and, asc, between, eq, notInArray } from "drizzle-orm";
 import type { Activity, PlannedWorkout } from "../domain/matching";
 import type { Db } from "./db";
-import { activities, plannedWorkouts, syncStatus } from "./db/schema";
+import { activities, athleteSettings, plannedWorkouts, syncStatus } from "./db/schema";
 import { toActivity, toPlannedWorkout, type IntervalsActivity, type IntervalsEvent } from "./intervals";
 
 export type StoredPlannedWorkout = PlannedWorkout & { raw: unknown };
@@ -109,6 +109,25 @@ export function loadSyncStatus(db: Db): SyncStatus | null {
       .from(syncStatus)
       .where(eq(syncStatus.id, SYNC_STATUS_ID))
       .get() ?? null
+  );
+}
+
+const ATHLETE_SETTINGS_ID = 1;
+
+/** Records the intervals.icu Threshold Pace of the athlete's Run settings, in metres per second; null when none is set. */
+export function saveRunThresholdPace(db: Db, runThresholdPace: number | null): void {
+  const row = { id: ATHLETE_SETTINGS_ID, runThresholdPace };
+  db.insert(athleteSettings).values(row).onConflictDoUpdate({ target: athleteSettings.id, set: row }).run();
+}
+
+/** The intervals.icu Threshold Pace last synced, in metres per second; null before it is synced or when none is set. */
+export function loadRunThresholdPace(db: Db): number | null {
+  return (
+    db
+      .select({ runThresholdPace: athleteSettings.runThresholdPace })
+      .from(athleteSettings)
+      .where(eq(athleteSettings.id, ATHLETE_SETTINGS_ID))
+      .get()?.runThresholdPace ?? null
   );
 }
 

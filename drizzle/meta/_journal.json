@@ -22,6 +22,13 @@
       "when": 1792796081011,
       "tag": "0002_rep_intervals",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1792813946600,
+      "tag": "0003_athlete_settings",
+      "breakpoints": true
     }
   ]
 }

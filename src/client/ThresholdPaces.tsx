@@ -1,3 +1,4 @@
+import { secondsPerMile } from "../domain/pace";
 import type { ThresholdsResponse } from "../server/app";
 import { formatHr, formatPace } from "./format";
 import { ThresholdChart } from "./ThresholdChart";
@@ -16,9 +17,16 @@ export function ThresholdPaces({ thresholds }: { thresholds: ThresholdsResponse 
         </Threshold>
         <Threshold name="LT2 Pace" pace={thresholds.lt2Pace}>
           at LTHR {formatHr(thresholds.lthr)}
+          {thresholds.icuThresholdPace !== null && (
+            <>
+              <br />
+              intervals.icu {formatPace(thresholds.icuThresholdPace)}
+              {thresholds.lt2Pace !== null && ` · ${comparison(thresholds.icuThresholdPace, thresholds.lt2Pace)}`}
+            </>
+          )}
         </Threshold>
       </div>
-      <ThresholdChart weeks={thresholds.weeks} />
+      <ThresholdChart weeks={thresholds.weeks} icuThresholdPace={thresholds.icuThresholdPace} />
     </section>
   );
 }
@@ -31,4 +39,11 @@ function Threshold({ name, pace, children }: { name: string; pace: number | null
       <span className="range">{children}</span>
     </div>
   );
+}
+
+/** How the intervals.icu Threshold Pace compares with LT2 Pace, e.g. "8 s slower" per mile. */
+function comparison(icuThresholdPace: number, lt2Pace: number): string {
+  const seconds = Math.round(secondsPerMile(icuThresholdPace) - secondsPerMile(lt2Pace));
+  if (seconds === 0) return "same";
+  return `${Math.abs(seconds)} s ${seconds > 0 ? "slower" : "faster"}`;
 }

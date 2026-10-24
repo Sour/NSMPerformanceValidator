@@ -9,7 +9,7 @@ import {
   type WeekResponse,
 } from "./app";
 import { openDb } from "./db";
-import { saveSync } from "./store";
+import { saveRunThresholdPace, saveSync } from "./store";
 import type { SyncRunner } from "./syncRunner";
 
 describe("/api/sync", () => {
@@ -284,6 +284,18 @@ describe("/api/thresholds", () => {
     expect(thresholds.lthr).toBeCloseTo(180.86, 2);
     expect(thresholds.lt2Pace).toBeNull();
     expect(thresholds.lt1Pace).toBeNull();
+  });
+
+  it("has the intervals.icu Threshold Pace beside LT2 Pace, or null when none is stored", async () => {
+    const db = dbWithRuns(2);
+    const app = createApp(db, () => "2026-10-23", idleRunner());
+    const before = (await (await app.request("/api/thresholds")).json()) as ThresholdsResponse;
+    expect(before.icuThresholdPace).toBeNull();
+
+    saveRunThresholdPace(db, 3.0);
+    const after = (await (await app.request("/api/thresholds")).json()) as ThresholdsResponse;
+    expect(after.icuThresholdPace).toBe(3.0);
+    expect(after.lt2Pace).toBeCloseTo(3.117, 3);
   });
 
   it("has the weekly trend from the first Planned Workout's Training Week through this one", async () => {

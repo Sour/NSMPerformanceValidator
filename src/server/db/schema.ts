@@ -36,3 +36,10 @@ export const syncStatus = sqliteTable("sync_status", {
   /** The local date of the last successful sync that stored data; later syncs re-fetch only from shortly before it. */
   syncedThrough: text("synced_through"),
 });
+
+/** What the latest sync read from the athlete's intervals.icu settings; a single row with id 1. */
+export const athleteSettings = sqliteTable("athlete_settings", {
+  id: integer("id").primaryKey(),
+  /** The intervals.icu Threshold Pace of the athlete's Run settings, in metres per second; null when none is set. */
+  runThresholdPace: real("run_threshold_pace"),
+});

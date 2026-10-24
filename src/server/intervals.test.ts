@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activityAverages, plannedRecovery } from "./intervals";
+import { activityAverages, plannedRecovery, runThresholdPace } from "./intervals";
 
 describe("activityAverages", () => {
   it("is an Activity's whole-run Easy GAP and Easy HR", () => {
@@ -40,5 +40,28 @@ describe("plannedRecovery", () => {
     expect(plannedRecovery({ workout_doc: { steps: [{ duration: 2700, intensity: "active" }] } })).toBeNull();
     expect(plannedRecovery({ workout_doc: null })).toBeNull();
     expect(plannedRecovery({})).toBeNull();
+  });
+});
+
+/** A `GET /athlete/{id}` response shaped per intervals.icu's SportSettings schema, trimmed to the fields that matter. */
+const athlete = {
+  id: "i12345",
+  sportSettings: [
+    { id: 1, types: ["Ride", "VirtualRide"], ftp: 250, lthr: 170, threshold_pace: null, pace_units: null },
+    { id: 2, types: ["Run", "VirtualRun", "TrailRun"], lthr: 181, threshold_pace: 4.47, pace_units: "MINS_MILE" },
+  ],
+};
+
+describe("runThresholdPace", () => {
+  it("is the Run sport's threshold pace, in metres per second whatever its display units", () => {
+    expect(runThresholdPace(athlete)).toBe(4.47);
+  });
+
+  it("is null when no sport covers Run, or Run has no threshold pace", () => {
+    expect(runThresholdPace({ sportSettings: [athlete.sportSettings[0]] })).toBeNull();
+    expect(runThresholdPace({ sportSettings: [{ types: ["Run"], threshold_pace: null }] })).toBeNull();
+    expect(runThresholdPace({ sportSettings: [{ types: ["Run"], threshold_pace: 0 }] })).toBeNull();
+    expect(runThresholdPace({})).toBeNull();
+    expect(runThresholdPace(null)).toBeNull();
   });
 });

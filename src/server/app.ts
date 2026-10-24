@@ -11,7 +11,7 @@ import { trainingWeek, weekStart, type TrainingDay, type TrainingWeek, type Week
 import { weeklyVolume, type VolumeWeek } from "../domain/weeklyVolume";
 import type { Db } from "./db";
 import { activityAverages, detectedIntervals, plannedRecovery } from "./intervals";
-import { loadActivities, loadPlannedWorkouts, loadSyncStatus, type StoredActivity } from "./store";
+import { loadActivities, loadPlannedWorkouts, loadRunThresholdPace, loadSyncStatus, type StoredActivity } from "./store";
 import type { SyncRunner } from "./syncRunner";
 
 export type WeekActivity = Omit<StoredActivity, "raw" | "intervals">;
@@ -43,6 +43,8 @@ export interface ThresholdsResponse {
   lt1HrAssumed: boolean;
   /** LT1 Pace as a grade-adjusted speed in metres per second; null without LTHR or with Not enough data. */
   lt1Pace: number | null;
+  /** The intervals.icu Threshold Pace in metres per second, a reference beside LT2 Pace; null when none is synced. */
+  icuThresholdPace: number | null;
   /** LT1 Pace and LT2 Pace as of each Training Week since the plan began, oldest first; empty without LTHR. */
   weeks: ThresholdWeek[];
 }
@@ -118,6 +120,7 @@ export function createApp(db: Db, today: () => string, syncRunner: SyncRunner, s
         lt1Hr: lt1?.bpm ?? null,
         lt1HrAssumed: lt1?.assumed ?? settings.lt1Hr === null,
         lt1Pace: lt1 === null || line === null ? null : paceAt(line, lt1.bpm),
+        icuThresholdPace: loadRunThresholdPace(db),
         weeks:
           current === null || lt1 === null || planStart === undefined
             ? []
