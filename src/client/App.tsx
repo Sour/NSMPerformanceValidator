@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { VolumeWeek } from "../domain/weeklyVolume";
 import type { ProgressResponse, SyncStatusResponse, VolumeResponse, WeekActivity, WeekResponse } from "../server/app";
-import { formatDate, formatDateTime, formatHours, formatMiles } from "./format";
+import { formatDate, formatDateTime, formatVolume } from "./format";
 import { RepCards } from "./RepCards";
 import { VolumeChart } from "./VolumeChart";
 
@@ -141,11 +141,10 @@ function WeekVolume({ weeks, start }: { weeks: VolumeWeek[]; start: string }) {
   const thisWeek = weeks[i];
   if (!thisWeek) return null;
   const lastWeek = weeks[i - 1];
-  const volume = (w: VolumeWeek) => `${formatMiles(w.total.distance)} · ${formatHours(w.total.movingTime)}`;
   return (
     <p className="week-volume">
-      <strong>{volume(thisWeek)}</strong> so far
-      {lastWeek && <span className="range"> · last week {volume(lastWeek)}</span>}
+      <strong>{formatVolume(thisWeek.total)}</strong> so far
+      {lastWeek && <span className="range"> · last week {formatVolume(lastWeek.total)}</span>}
     </p>
   );
 }

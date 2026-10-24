@@ -1,4 +1,5 @@
 import { formatDuration, miles } from "../domain/pace";
+import type { Volume } from "../domain/weeklyVolume";
 
 /** A Format as written in the plan, e.g. "4 × 6:00, 1:30 rec". */
 export function formatText(reps: number, repLength: number, recovery: number | null): string {
@@ -6,7 +7,7 @@ export function formatText(reps: number, repLength: number, recovery: number | n
 }
 
 /** Seconds as h:mm, e.g. 5400 as "1:30". */
-export function formatHours(seconds: number): string {
+export function formatHoursMinutes(seconds: number): string {
   const minutes = Math.round(seconds / 60);
   return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
 }
@@ -14,6 +15,11 @@ export function formatHours(seconds: number): string {
 /** Metres as miles to one decimal place, e.g. "6.2 mi". */
 export function formatMiles(metres: number): string {
   return `${miles(metres).toFixed(1)} mi`;
+}
+
+/** A Volume as distance and time, e.g. "6.2 mi · 1:30". */
+export function formatVolume(volume: Volume): string {
+  return `${formatMiles(volume.distance)} · ${formatHoursMinutes(volume.movingTime)}`;
 }
 
 export function formatDateTime(iso: string): string {

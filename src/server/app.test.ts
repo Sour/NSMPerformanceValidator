@@ -144,7 +144,7 @@ describe("/api/volume", () => {
 
     const { weeks } = (await (await app.request("/api/volume")).json()) as VolumeResponse;
 
-    expect(weeks.map((w) => [w.start, w.byRunType["Easy Run"].distance, w.byRunType["Unplanned Run"].distance])).toEqual([
+    expect(weeks.map((w) => [w.start, w.byCategory["Easy Run"].distance, w.byCategory["Unplanned Run"].distance])).toEqual([
       ["2026-10-12", 8000, 0],
       ["2026-10-19", 0, 5000],
     ]);

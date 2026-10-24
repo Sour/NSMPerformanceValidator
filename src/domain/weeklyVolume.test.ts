@@ -42,13 +42,21 @@ describe("weeklyVolume", () => {
       run("extra", "2026-10-25", 5000, { movingTime: 1800 }),
     ];
     const [week] = weeklyVolume("2026-10-25", plan, activities);
-    expect(week!.byRunType).toEqual({
+    expect(week!.byCategory).toEqual({
       "Quality Run": { distance: 12000, movingTime: 3600 },
       "Easy Run": { distance: 14000, movingTime: 4700 },
       "Long Run": { distance: 20000, movingTime: 6600 },
       "Unplanned Run": { distance: 5000, movingTime: 1800 },
+      "Other Run": { distance: 0, movingTime: 0 },
     });
     expect(week!.total).toEqual({ distance: 51000, movingTime: 16700 });
+  });
+
+  it("counts a run Matched to a Planned Workout with no Run Type as an Other Run, not an Unplanned Run", () => {
+    const activities = [run("strides", "2026-10-20", 4000, { movingTime: 1500 })];
+    const [week] = weeklyVolume("2026-10-22", [planned(1, "2026-10-20", "Strides")], activities);
+    expect(week!.byCategory["Other Run"]).toEqual({ distance: 4000, movingTime: 1500 });
+    expect(week!.byCategory["Unplanned Run"]).toEqual({ distance: 0, movingTime: 0 });
   });
 
   it("counts every running Activity and nothing else", () => {

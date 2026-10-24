@@ -5,6 +5,7 @@ export function secondsPerMile(metresPerSecond: number): number {
   return METRES_PER_MILE / metresPerSecond;
 }
 
+/** A distance in metres as miles. */
 export function miles(metres: number): number {
   return metres / METRES_PER_MILE;
 }
