@@ -7,6 +7,7 @@ import { formatDuration, secondsPerMile } from "../domain/pace";
 import type { RepLengthCard, RepLengthRun } from "../domain/repProgress";
 import { formatDate, formatText } from "./format";
 import { RunDrawer } from "./RunDrawer";
+import { usePrefersDark } from "./usePrefersDark";
 
 echarts.use([LineChart, ScatterChart, GridComponent, LegendComponent, MarkLineComponent, TooltipComponent, SVGRenderer]);
 
@@ -407,18 +408,6 @@ function RunTable({ runs, onSelect }: { runs: RepLengthRun[]; onSelect: (run: Re
       </table>
     </details>
   );
-}
-
-function usePrefersDark(): boolean {
-  const query = "(prefers-color-scheme: dark)";
-  const [dark, setDark] = useState(() => matchMedia(query).matches);
-  useEffect(() => {
-    const media = matchMedia(query);
-    const onChange = () => setDark(media.matches);
-    media.addEventListener("change", onChange);
-    return () => media.removeEventListener("change", onChange);
-  }, []);
-  return dark;
 }
 
 function escapeHtml(text: string): string {

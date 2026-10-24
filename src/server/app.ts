@@ -6,6 +6,7 @@ import {
   type RepLengthCard,
 } from "../domain/repProgress";
 import { trainingWeek, type TrainingDay, type TrainingWeek, type WeekWorkout } from "../domain/trainingWeek";
+import { weeklyVolume, type VolumeWeek } from "../domain/weeklyVolume";
 import type { Db } from "./db";
 import { detectedIntervals, plannedRecovery } from "./intervals";
 import { loadActivities, loadPlannedWorkouts, loadSyncStatus, type StoredActivity } from "./store";
@@ -20,6 +21,10 @@ export type WeekResponse = Omit<TrainingWeek<WeekActivity>, "days"> & {
 };
 export interface ProgressResponse {
   cards: RepLengthCard[];
+}
+export interface VolumeResponse {
+  /** Oldest first; the last is this Training Week. */
+  weeks: VolumeWeek[];
 }
 export interface SyncStatusResponse {
   /** When the latest sync finished, as an ISO timestamp. */
@@ -65,6 +70,11 @@ export function createApp(db: Db, today: () => string, syncRunner: SyncRunner) {
     })
     .get("/api/progress", (c) => {
       return c.json<ProgressResponse>({ cards: repLengthCards(analysedPlannedWorkouts(db), analysedActivities(db)) });
+    })
+    .get("/api/volume", (c) => {
+      const planned = loadPlannedWorkouts(db).map(({ raw: _, ...p }) => p);
+      const activities = loadActivities(db).map(({ raw: _, intervals: __, ...a }) => a);
+      return c.json<VolumeResponse>({ weeks: weeklyVolume(today(), planned, activities) });
     })
     .get("/api/sync", (c) => c.json(syncStatus()))
     .post("/api/sync", async (c) => {

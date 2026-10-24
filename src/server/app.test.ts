@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createApp, type ProgressResponse, type SyncStatusResponse, type WeekResponse } from "./app";
+import { createApp, type ProgressResponse, type SyncStatusResponse, type VolumeResponse, type WeekResponse } from "./app";
 import { openDb } from "./db";
 import { saveSync } from "./store";
 import type { SyncRunner } from "./syncRunner";
@@ -108,6 +108,46 @@ describe("Quality Runs", () => {
       },
       previous: null,
     });
+  });
+});
+
+describe("/api/volume", () => {
+  it("has Weekly Volume for each Training Week through today's, stacked by Run Type", async () => {
+    const db = openDb(":memory:");
+    const event = {
+      id: 1,
+      start_date_local: "2026-10-13T00:00:00",
+      category: "WORKOUT",
+      type: "Run",
+      name: "Easy Run",
+      description: "[NSM]",
+      paired_activity_id: null,
+    };
+    const activity = (id: string, date: string, distance: number) => ({
+      id,
+      start_date_local: `${date}T07:00:00`,
+      type: "Run",
+      name: "Everett Running",
+      moving_time: 2400,
+      distance,
+      paired_event_id: null,
+    });
+    saveSync(
+      db,
+      { from: "2026-10-01", to: "2026-10-30" },
+      [event],
+      [activity("easy", "2026-10-13", 8000), activity("extra", "2026-10-21", 5000)],
+      new Map(),
+      { finishedAt: "2026-10-23T12:00:00.000Z", syncedThrough: "2026-10-23" },
+    );
+    const app = createApp(db, () => "2026-10-23", idleRunner());
+
+    const { weeks } = (await (await app.request("/api/volume")).json()) as VolumeResponse;
+
+    expect(weeks.map((w) => [w.start, w.byRunType["Easy Run"].distance, w.byRunType["Unplanned Run"].distance])).toEqual([
+      ["2026-10-12", 8000, 0],
+      ["2026-10-19", 0, 5000],
+    ]);
   });
 });
 

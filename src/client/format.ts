@@ -1,8 +1,19 @@
-import { formatDuration } from "../domain/pace";
+import { formatDuration, miles } from "../domain/pace";
 
 /** A Format as written in the plan, e.g. "4 × 6:00, 1:30 rec". */
 export function formatText(reps: number, repLength: number, recovery: number | null): string {
   return `${reps} × ${formatDuration(repLength)}${recovery === null ? "" : `, ${formatDuration(recovery)} rec`}`;
+}
+
+/** Seconds as h:mm, e.g. 5400 as "1:30". */
+export function formatHours(seconds: number): string {
+  const minutes = Math.round(seconds / 60);
+  return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
+}
+
+/** Metres as miles to one decimal place, e.g. "6.2 mi". */
+export function formatMiles(metres: number): string {
+  return `${miles(metres).toFixed(1)} mi`;
 }
 
 export function formatDateTime(iso: string): string {
