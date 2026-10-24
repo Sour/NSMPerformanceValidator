@@ -29,6 +29,9 @@ export interface PaceLine {
 const TARGET_LOW = 0.9;
 const TARGET_HIGH = 0.98;
 
+/** Without one set by the runner, LT1 HR is assumed to be this fraction of LTHR. */
+const ASSUMED_LT1_FRACTION = 0.88;
+
 /** Training Weeks before the one a pace line is for that it also reads. */
 const WINDOW_WEEKS_BEFORE = 5;
 
@@ -47,6 +50,11 @@ export function lthr(planned: PlannedWorkout[], today: string): number | null {
   if (!latest) return null;
   const { low, high } = heartRateTarget(latest.name)!;
   return (low / TARGET_LOW + high / TARGET_HIGH) / 2;
+}
+
+/** LT1 HR in bpm: the runner's own `setting` when there is one, otherwise assumed from `lthr`. */
+export function lt1Hr(lthr: number, setting: number | null): { bpm: number; assumed: boolean } {
+  return setting === null ? { bpm: lthr * ASSUMED_LT1_FRACTION, assumed: true } : { bpm: setting, assumed: false };
 }
 
 /**

@@ -11,7 +11,7 @@ const db = openDb(config.databasePath);
 const client = createIntervalsClient(config.athleteId, config.apiKey);
 const syncRunner = createSyncRunner(db, () => sync(db, client, localToday()));
 
-const app = createApp(db, localToday, syncRunner);
+const app = createApp(db, localToday, syncRunner, { lt1Hr: config.lt1Hr });
 app.use("/*", serveStatic({ root: "dist/client" }));
 
 serve({ fetch: app.fetch, port: config.port }, ({ port }) => {

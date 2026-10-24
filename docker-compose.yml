@@ -13,4 +13,5 @@ services:
       INTERVALS_ATHLETE_ID: ${INTERVALS_ATHLETE_ID:?set in .env}
       INTERVALS_API_KEY: ${INTERVALS_API_KEY:?set in .env}
       SYNC_INTERVAL: ${SYNC_INTERVAL:-30m}
+      LT1_HR: ${LT1_HR:-}
       TZ: ${TZ:-America/Los_Angeles}

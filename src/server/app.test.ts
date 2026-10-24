@@ -264,11 +264,26 @@ describe("/api/thresholds", () => {
     expect(thresholds.lt2Pace).toBeCloseTo(3.117, 3);
   });
 
+  it("has LT1 Pace at an assumed LT1 HR of 88% of LTHR, or at the runner's LT1_HR", async () => {
+    const assumed = createApp(dbWithRuns(2), () => "2026-10-23", idleRunner());
+    const a = (await (await assumed.request("/api/thresholds")).json()) as ThresholdsResponse;
+    // 0.88 × 180.86 = 159.16; 0.02 × 159.16 − 0.5 = 2.683
+    expect(a).toMatchObject({ lt1HrAssumed: true });
+    expect(a.lt1Hr).toBeCloseTo(159.16, 2);
+    expect(a.lt1Pace).toBeCloseTo(2.683, 3);
+
+    const set = createApp(dbWithRuns(2), () => "2026-10-23", idleRunner(), { lt1Hr: 150 });
+    const s = (await (await set.request("/api/thresholds")).json()) as ThresholdsResponse;
+    expect(s).toMatchObject({ lt1Hr: 150, lt1HrAssumed: false });
+    expect(s.lt1Pace).toBeCloseTo(2.5, 10);
+  });
+
   it("has no LT2 Pace, Not enough data, with only one Easy Run", async () => {
     const app = createApp(dbWithRuns(1), () => "2026-10-23", idleRunner());
     const thresholds = (await (await app.request("/api/thresholds")).json()) as ThresholdsResponse;
     expect(thresholds.lthr).toBeCloseTo(180.86, 2);
     expect(thresholds.lt2Pace).toBeNull();
+    expect(thresholds.lt1Pace).toBeNull();
   });
 });
 
