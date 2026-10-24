@@ -6,7 +6,7 @@ import {
   type AnalysedPlannedWorkout,
   type RepLengthCard,
 } from "../domain/repProgress";
-import { lthr, paceAt, paceLine } from "../domain/thresholdPace";
+import { lt1Hr, lthr, paceAt, paceLine } from "../domain/thresholdPace";
 import { trainingWeek, weekStart, type TrainingDay, type TrainingWeek, type WeekWorkout } from "../domain/trainingWeek";
 import { weeklyVolume, type VolumeWeek } from "../domain/weeklyVolume";
 import type { Db } from "./db";
@@ -37,6 +37,18 @@ export interface ThresholdsResponse {
   lthr: number | null;
   /** LT2 Pace as a grade-adjusted speed in metres per second; null without LTHR or with Not enough data. */
   lt2Pace: number | null;
+  /** LT1 HR in bpm; null without LTHR. */
+  lt1Hr: number | null;
+  /** LT1 HR was assumed from LTHR rather than set by the runner. */
+  lt1HrAssumed: boolean;
+  /** LT1 Pace as a grade-adjusted speed in metres per second; null without LTHR or with Not enough data. */
+  lt1Pace: number | null;
+}
+
+/** What the runner has set for the app. */
+export interface Settings {
+  /** The runner's own LT1 HR in bpm; null to assume it from LTHR. */
+  lt1Hr: number | null;
 }
 export interface SyncStatusResponse {
   /** When the latest sync finished, as an ISO timestamp. */
@@ -49,7 +61,7 @@ export interface SyncStatusResponse {
   running: boolean;
 }
 
-export function createApp(db: Db, today: () => string, syncRunner: SyncRunner) {
+export function createApp(db: Db, today: () => string, syncRunner: SyncRunner, settings: Settings = { lt1Hr: null }) {
   const syncStatus = (): SyncStatusResponse => {
     const status = loadSyncStatus(db);
     return {
@@ -95,9 +107,13 @@ export function createApp(db: Db, today: () => string, syncRunner: SyncRunner) {
       const qualityRuns = repLengthCards(analysedPlanned, analysedActivities(db)).flatMap((card) => card.runs);
       const current = lthr(analysedPlanned, date);
       const line = paceLine(weekStart(date), qualityRuns, easyRuns(db));
+      const lt1 = current === null ? null : lt1Hr(current, settings.lt1Hr);
       return c.json<ThresholdsResponse>({
         lthr: current,
         lt2Pace: current === null || line === null ? null : paceAt(line, current),
+        lt1Hr: lt1?.bpm ?? null,
+        lt1HrAssumed: lt1?.assumed ?? settings.lt1Hr === null,
+        lt1Pace: lt1 === null || line === null ? null : paceAt(line, lt1.bpm),
       });
     })
     .get("/api/sync", (c) => c.json(syncStatus()))

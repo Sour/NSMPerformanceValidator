@@ -42,7 +42,7 @@ export function App() {
   return (
     <main>
       <SyncBar onSynced={load} />
-      <h1>LT2 Pace</h1>
+      <h1>LT1 Pace / LT2 Pace</h1>
       <ThresholdPaces thresholds={thresholds} />
 
       <h1 className="section-title">Rep GAP</h1>

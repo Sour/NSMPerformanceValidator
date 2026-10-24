@@ -20,6 +20,17 @@ export function parseInterval(value: string): number {
   return ms;
 }
 
+/** The highest heart rate taken as a plausible LT1 HR, in bpm. */
+const MAX_LT1_HR = 250;
+
+/** Reads an LT1_HR such as "155" in bpm; null when it is not set, so LT1 HR is assumed. */
+export function parseLt1Hr(value: string | undefined): number | null {
+  if (value === undefined || value.trim() === "") return null;
+  const bpm = /^\d+(\.\d+)?$/.test(value.trim()) ? Number(value) : NaN;
+  if (!(bpm > 0 && bpm <= MAX_LT1_HR)) throw new Error(`LT1_HR must be a heart rate in bpm such as 155, not "${value}"`);
+  return bpm;
+}
+
 export const config = {
   get athleteId() {
     return required("INTERVALS_ATHLETE_ID");
@@ -31,6 +42,8 @@ export const config = {
   port: Number(process.env.PORT ?? 3000),
   /** Milliseconds between scheduled syncs. */
   syncInterval: parseInterval(process.env.SYNC_INTERVAL ?? "30m"),
+  /** The runner's own LT1 HR in bpm; null to assume it from LTHR. */
+  lt1Hr: parseLt1Hr(process.env.LT1_HR),
 };
 
 /** The athlete's time zone, which Training Weeks follow; set TZ to change it. */

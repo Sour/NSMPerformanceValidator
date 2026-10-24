@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PlannedWorkout } from "./matching";
-import { lthr, paceAt, paceLine, type EasyPoint, type QualityPoint } from "./thresholdPace";
+import { lt1Hr, lthr, paceAt, paceLine, type EasyPoint, type QualityPoint } from "./thresholdPace";
 
 function planned(id: number, date: string, name: string): PlannedWorkout {
   return { id, date, name, pairedActivityId: null };
@@ -41,10 +41,27 @@ describe("lthr", () => {
   });
 });
 
+describe("lt1Hr", () => {
+  it("is the runner's own LT1 HR when they set one", () => {
+    expect(lt1Hr(181, 155)).toEqual({ bpm: 155, assumed: false });
+  });
+
+  it("is assumed to be 88% of LTHR otherwise", () => {
+    const assumed = lt1Hr(180, null);
+    expect(assumed.assumed).toBe(true);
+    expect(assumed.bpm).toBeCloseTo(158.4, 10);
+  });
+});
+
 describe("paceLine", () => {
   it("fits Rep GAP / Rep HR and Easy GAP / Easy HR, so LT2 Pace at an LTHR of 180 is 3.1 m/s", () => {
     const line = paceLine("2026-10-19", onTheLine.quality, onTheLine.easy);
     expect(paceAt(line!, 180)).toBeCloseTo(3.1, 10);
+  });
+
+  it("gives LT1 Pace at LT1 HR from the same line: 2.6 m/s at 155 bpm", () => {
+    const line = paceLine("2026-10-19", onTheLine.quality, onTheLine.easy);
+    expect(paceAt(line!, 155)).toBeCloseTo(2.6, 10);
   });
 
   it("uses only the Training Week and the five before it", () => {

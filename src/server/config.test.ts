@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { localToday, parseInterval } from "./config";
+import { localToday, parseInterval, parseLt1Hr } from "./config";
 
 describe("localToday", () => {
   // 05:30 UTC on Monday 26 Oct 2026 is still 22:30 on Sunday 25 Oct in Los Angeles.
@@ -27,5 +27,21 @@ describe("parseInterval", () => {
 
   it.each(["", "0m", "-5m", "half an hour", "10d", "1000h"])("rejects %j", (value) => {
     expect(() => parseInterval(value)).toThrow(/SYNC_INTERVAL/);
+  });
+});
+
+describe("parseLt1Hr", () => {
+  it("is null when LT1_HR is not set, so LT1 HR is assumed", () => {
+    expect(parseLt1Hr(undefined)).toBeNull();
+    expect(parseLt1Hr(" ")).toBeNull();
+  });
+
+  it("reads a heart rate in bpm", () => {
+    expect(parseLt1Hr("155")).toBe(155);
+    expect(parseLt1Hr(" 152.5 ")).toBe(152.5);
+  });
+
+  it.each(["0", "-150", "fast", "155bpm", "400"])("rejects %j", (value) => {
+    expect(() => parseLt1Hr(value)).toThrow(/LT1_HR/);
   });
 });

@@ -11,7 +11,7 @@ INTERVALS_ATHLETE_ID=i12345
 INTERVALS_API_KEY=...
 ```
 
-Optional: `DATABASE_PATH` (default `data/nsm.db`), `PORT` (default `3000`) and `SYNC_INTERVAL` (default `30m`; also takes e.g. `1h` or `90s`).
+Optional: `DATABASE_PATH` (default `data/nsm.db`), `PORT` (default `3000`) `SYNC_INTERVAL` (default `30m`; also takes e.g. `1h` or `90s`) and `LT1_HR` (your LT1 heart rate in bpm, e.g. `155`, from a test; without it, LT1 HR is assumed to be 88% of LTHR).
 
 ```
 npm install
@@ -38,7 +38,7 @@ The app has no login, so keep it on the LAN.
    - **Repository**: `ghcr.io/sour/nsmperformancevalidator:latest`
    - **Port**: container `3000` → any free host port
    - **Path**: container `/data` → `/mnt/user/appdata/nsm`
-   - **Variables**: `INTERVALS_ATHLETE_ID`, `INTERVALS_API_KEY`, and optionally `SYNC_INTERVAL` and `TZ`
+   - **Variables**: `INTERVALS_ATHLETE_ID`, `INTERVALS_API_KEY`, and optionally `SYNC_INTERVAL`, `LT1_HR` and `TZ`
 3. To update, use **Check for Updates** on the Docker tab, or pin a commit SHA tag instead of `latest`.
 
 The API key is only read by the server; the page never sees it.
