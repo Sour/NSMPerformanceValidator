@@ -49,16 +49,7 @@ export function saveSync(
       )
       .run();
 
-    for (const a of runningActivities) {
-      const row = {
-        ...toActivity(a),
-        distance: a.distance ?? null,
-        raw: a,
-        intervals: intervals.get(a.id) ?? null,
-        syncedAt: finishedAt,
-      };
-      tx.insert(activities).values(row).onConflictDoUpdate({ target: activities.id, set: row }).run();
-    }
+    for (const a of runningActivities) upsertActivity(tx, a, intervals.get(a.id) ?? null, finishedAt);
     tx.delete(activities)
       .where(
         and(
@@ -70,6 +61,21 @@ export function saveSync(
 
     writeSyncStatus(tx, { finishedAt, error: null, succeededAt: finishedAt, syncedThrough });
   });
+}
+
+/** Stores one running Activity with its detected intervals response (null when not fetched), as a sync would. */
+export function saveActivity(db: Db, activity: IntervalsActivity, intervals: unknown, syncedAt: string): void {
+  upsertActivity(db, activity, intervals, syncedAt);
+}
+
+/** Removes one stored Activity; nothing happens when it is not stored. */
+export function deleteActivity(db: Db, activityId: string): void {
+  db.delete(activities).where(eq(activities.id, activityId)).run();
+}
+
+function upsertActivity(db: Pick<Db, "insert">, a: IntervalsActivity, intervals: unknown, syncedAt: string): void {
+  const row = { ...toActivity(a), distance: a.distance ?? null, raw: a, intervals, syncedAt };
+  db.insert(activities).values(row).onConflictDoUpdate({ target: activities.id, set: row }).run();
 }
 
 /** Records a sync that failed with `error`, keeping what the last successful one did. */

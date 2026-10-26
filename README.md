@@ -21,7 +21,7 @@ npm run dev     # API on :3000, page on Vite's dev server
 
 Or `npm run build && npm start` to serve the built page and the API together on `PORT`.
 
-The server syncs on start and then every `SYNC_INTERVAL`; the page's **Sync now** button syncs on demand. After the first sync, each sync only re-fetches from a week before the last successful one, so edits on intervals.icu to older Planned Workouts or Activities, and a newly tagged earlier `[NSM]` start, are not picked up. To re-fetch everything since the `[NSM]` start, delete the `sync_status` row and sync again; to pick up an earlier `[NSM]` start, delete the database.
+The server syncs on start and then every `SYNC_INTERVAL`; the page's **Sync now** button syncs on demand. After the first sync, each sync only re-fetches from a week before the last successful one, so edits on intervals.icu to older Planned Workouts or Activities, and a newly tagged earlier `[NSM]` start, are not picked up. To pick up a fix to an older Quality Run's intervals, open its run drawer and use **Re-fetch from intervals.icu**, which reloads that one Activity whatever its age; the drawer shows when intervals.icu last changed its intervals. To re-fetch everything else since the `[NSM]` start, such as edits to older Planned Workouts, delete the `sync_status` row and sync again; to pick up an earlier `[NSM]` start, delete the database.
 
 ## Running in Docker
 

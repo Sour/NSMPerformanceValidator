@@ -84,6 +84,15 @@ export function detectedIntervals(response: unknown): DetectedInterval[] {
 }
 
 /**
+ * When intervals.icu last analysed an Activity's intervals, read from its `GET /activity/{id}/intervals` response:
+ * its `analyzed` ISO timestamp, which moves when the intervals are edited. Null when the response has none.
+ */
+export function intervalsAnalyzedAt(response: unknown): string | null {
+  const analyzed = (response as { analyzed?: unknown } | null)?.analyzed;
+  return typeof analyzed === "string" ? analyzed : null;
+}
+
+/**
  * The intervals.icu Threshold Pace of the athlete's Run settings, read from a `GET /athlete/{id}` response:
  * the `threshold_pace` of the sport settings covering Run, always metres per second. Null when there is none.
  */
@@ -97,6 +106,8 @@ export function runThresholdPace(athlete: unknown): number | null {
 export interface IntervalsClient {
   events(oldest: string, newest: string): Promise<IntervalsEvent[]>;
   activities(oldest: string, newest: string): Promise<IntervalsActivity[]>;
+  /** One Activity; null when intervals.icu no longer has it. */
+  activity(activityId: string): Promise<IntervalsActivity | null>;
   /** The intervals intervals.icu detected in one Activity; read it with `detectedIntervals`. */
   intervals(activityId: string): Promise<unknown>;
   /** The athlete with their sport settings; read it with `runThresholdPace`. */
@@ -105,15 +116,29 @@ export interface IntervalsClient {
 
 /** How much of an error response to keep; enough for intervals.icu's message, not a whole HTML page. */
 const ERROR_BODY_CHARS = 200;
+const NOT_FOUND = 404;
 
 export function createIntervalsClient(athleteId: string, apiKey: string): IntervalsClient {
   const athlete = `athlete/${encodeURIComponent(athleteId)}`;
   const authorization = `Basic ${Buffer.from(`API_KEY:${apiKey}`).toString("base64")}`;
 
   async function get<T>(path: string, params: Record<string, string> = {}): Promise<T> {
+    return read<T>(path, await request(path, params));
+  }
+
+  /** Like `get`, but null when intervals.icu answers 404 Not Found. */
+  async function getIfFound<T>(path: string): Promise<T | null> {
+    const res = await request(path);
+    return res.status === NOT_FOUND ? null : read<T>(path, res);
+  }
+
+  function request(path: string, params: Record<string, string> = {}): Promise<Response> {
     const url = new URL(`https://intervals.icu/api/v1/${path}`);
     for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-    const res = await fetch(url, { headers: { authorization, accept: "application/json" } });
+    return fetch(url, { headers: { authorization, accept: "application/json" } });
+  }
+
+  async function read<T>(path: string, res: Response): Promise<T> {
     if (!res.ok) throw new Error(`intervals.icu ${path} failed: ${res.status} ${(await res.text()).slice(0, ERROR_BODY_CHARS)}`);
     return (await res.json()) as T;
   }
@@ -121,6 +146,7 @@ export function createIntervalsClient(athleteId: string, apiKey: string): Interv
   return {
     events: (oldest, newest) => get(`${athlete}/events`, { oldest, newest, category: "WORKOUT" }),
     activities: (oldest, newest) => get(`${athlete}/activities`, { oldest, newest }),
+    activity: (activityId) => getIfFound(`activity/${encodeURIComponent(activityId)}`),
     intervals: (activityId) => get(`activity/${encodeURIComponent(activityId)}/intervals`),
     athlete: () => get(athlete),
   };

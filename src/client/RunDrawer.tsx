@@ -1,11 +1,53 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { formatDuration, secondsPerMile } from "../domain/pace";
 import type { RepLengthRun } from "../domain/repProgress";
-import { formatDate, formatText } from "./format";
+import type { RefetchResponse } from "../server/app";
+import { formatDate, formatDateTime, formatText } from "./format";
 
-/** The run detail drawer for one Quality Run: its Rep GAP and Rep HR, a bar per Rep, and a link to the Activity. */
-export function RunDrawer({ run, onClose }: { run: RepLengthRun; onClose: () => void }) {
+/**
+ * The run detail drawer for one Quality Run: its Rep GAP and Rep HR, a bar per Rep, a link to the Activity,
+ * and Re-fetch. After a Re-fetch, `onRefetched` reloads the page, which brings the drawer the run as it now is;
+ * when its Activity is no longer Matched to a Quality Run, `onGone` is told why instead.
+ */
+export function RunDrawer({
+  run,
+  onClose,
+  onRefetched,
+  onGone,
+}: {
+  run: RepLengthRun;
+  onClose: () => void;
+  onRefetched: () => Promise<void>;
+  onGone: (message: string) => Promise<void>;
+}) {
   const ref = useRef<HTMLDialogElement>(null);
+  const [refetching, setRefetching] = useState(false);
+  const [refetchError, setRefetchError] = useState<string | null>(null);
+
+  async function refetch() {
+    setRefetching(true);
+    setRefetchError(null);
+    let outcome: RefetchResponse["outcome"];
+    try {
+      const res = await fetch(`/api/activities/${encodeURIComponent(run.activityId)}/refetch`, { method: "POST" });
+      const body = (await res.json().catch(() => null)) as RefetchResponse | { error: string } | null;
+      if (!res.ok || !body || "error" in body) throw new Error(body && "error" in body ? body.error : `HTTP ${res.status}`);
+      outcome = body.outcome;
+    } catch (e) {
+      setRefetchError(`Re-fetch failed: ${(e as Error).message}`);
+      setRefetching(false);
+      return;
+    }
+    // The re-fetch has been stored by now, so a failed reload is not a failed re-fetch.
+    try {
+      if (outcome === "Updated") await onRefetched();
+      else await onGone(GONE[outcome](formatDate(run.date)));
+    } catch (e) {
+      setRefetchError(`Re-fetched, but the page could not reload: ${(e as Error).message}`);
+    } finally {
+      setRefetching(false);
+    }
+  }
 
   // Unmounting removes the dialog from the page, which closes it; closing it here instead would fire `onClose`.
   // Focus goes to the drawer itself rather than its close button.
@@ -99,10 +141,26 @@ export function RunDrawer({ run, onClose }: { run: RepLengthRun; onClose: () => 
         <a className="activity-link" href={activityUrl(run.activityId)} target="_blank" rel="noreferrer">
           View Activity on intervals.icu ↗
         </a>
+
+        <div className="refetch">
+          {run.intervalsChangedAt !== null && (
+            <p className="note">Intervals changed {formatDateTime(run.intervalsChangedAt)}</p>
+          )}
+          <button type="button" onClick={refetch} disabled={refetching}>
+            {refetching ? "Re-fetching…" : "Re-fetch from intervals.icu"}
+          </button>
+          {refetchError && <p className="error">{refetchError}</p>}
+        </div>
       </div>
     </dialog>
   );
 }
+
+/** What the card says when a re-fetched Activity is no longer Matched to a Quality Run, given the run's date. */
+const GONE: Record<Exclude<RefetchResponse["outcome"], "Updated">, (date: string) => string> = {
+  Deleted: (date) => `The Activity on ${date} no longer exists on intervals.icu, so it has been removed.`,
+  NotQualityRun: (date) => `The Activity on ${date} is no longer Matched to this Quality Run.`,
+};
 
 function Bar({ width, label, className }: { width: number | null; label: string; className: string }) {
   return (

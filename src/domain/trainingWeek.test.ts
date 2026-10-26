@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Activity, PlannedWorkout } from "./matching";
-import { trainingWeek } from "./trainingWeek";
+import { trainingWeek, trainingWeekRange } from "./trainingWeek";
 
 function planned(id: number, date: string, name: string, pairedActivityId: string | null = null): PlannedWorkout {
   return { id, date, name, pairedActivityId };
@@ -65,5 +65,42 @@ describe("trainingWeek", () => {
     ];
     const week = trainingWeek("2026-10-22", plan, activities);
     expect(week.unplannedRuns.map((a) => a.id)).toEqual(["double", "sunday"]);
+  });
+});
+
+describe("trainingWeek for another date", () => {
+  const activities = [runningActivity("i199098087", "2026-10-19", { pairedEventId: 1 }), runningActivity("sunday", "2026-10-25")];
+
+  it("is the past Training Week containing that date, its unmatched Planned Workouts Missed", () => {
+    const week = trainingWeek("2026-10-29", plan, activities, "2026-10-21");
+    expect([week.start, week.end]).toEqual(["2026-10-19", "2026-10-25"]);
+    const statuses = week.days.flatMap((d) => d.workouts.map((w) => [w.plannedWorkout.id, w.status]));
+    expect(statuses).toEqual([
+      [1, "Matched"],
+      [2, "Missed"],
+      [3, "Missed"],
+      [4, "Missed"],
+      [5, "Missed"],
+      [6, "Missed"],
+    ]);
+    expect(week.unplannedRuns.map((a) => a.id)).toEqual(["sunday"]);
+  });
+
+  it("is an upcoming Training Week, its Planned Workouts Upcoming", () => {
+    const week = trainingWeek("2026-10-14", plan, [], "2026-10-19");
+    expect(week.start).toBe("2026-10-19");
+    expect(week.days.flatMap((d) => d.workouts.map((w) => w.status))).toEqual(Array(6).fill("Upcoming"));
+  });
+});
+
+describe("trainingWeekRange", () => {
+  it("runs from the first Planned Workout's Training Week to the last one's", () => {
+    const later = [planned(9, "2026-09-30", "Easy Run"), ...plan, planned(10, "2026-11-11", "Long Run")];
+    expect(trainingWeekRange("2026-10-22", later)).toEqual({ earliest: "2026-09-28", latest: "2026-11-09" });
+  });
+
+  it("always includes this Training Week", () => {
+    expect(trainingWeekRange("2026-11-04", plan)).toEqual({ earliest: "2026-10-19", latest: "2026-11-02" });
+    expect(trainingWeekRange("2026-10-22", [])).toEqual({ earliest: "2026-10-19", latest: "2026-10-19" });
   });
 });

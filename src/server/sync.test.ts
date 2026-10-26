@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { openDb } from "./db";
 import type { IntervalsActivity, IntervalsClient, IntervalsEvent } from "./intervals";
 import { loadActivities, loadPlannedWorkouts, loadRunThresholdPace, loadSyncStatus } from "./store";
-import { sync } from "./sync";
+import { refetchActivity, sync } from "./sync";
 
 function event(id: number, date: string, name: string, description = "[NSM]", extra: Partial<IntervalsEvent> = {}): IntervalsEvent {
   return {
@@ -33,13 +33,15 @@ function activity(id: string, date: string, type: string, extra: Partial<Interva
 type FakeClient = IntervalsClient & { requests: string[] };
 
 /**
- * Serves the given data by date range, recording each request as "events oldest..newest", "intervals id" or "athlete".
- * `athlete` is the athlete response, or an Error to fail that request with.
+ * Serves the given data by date range or id, recording each request as "events oldest..newest", "activity id",
+ * "intervals id" or "athlete". `athlete` is the athlete response, or an Error to fail that request with;
+ * `intervals` gives each Activity's intervals response, or throws to fail that request.
  */
 function fakeClient(
   events: IntervalsEvent[],
   activities: IntervalsActivity[],
   athlete: unknown = { sportSettings: [{ types: ["Run"], threshold_pace: 4.47 }] },
+  intervals: (activityId: string) => unknown = intervalsResponse,
 ): FakeClient {
   const requests: string[] = [];
   const within = (oldest: string, newest: string) => (x: { start_date_local: string }) =>
@@ -54,9 +56,13 @@ function fakeClient(
       requests.push(`activities ${oldest}..${newest}`);
       return activities.filter(within(oldest, newest));
     },
+    activity: async (activityId) => {
+      requests.push(`activity ${activityId}`);
+      return activities.find((a) => a.id === activityId) ?? null;
+    },
     intervals: async (activityId) => {
       requests.push(`intervals ${activityId}`);
-      return intervalsResponse(activityId);
+      return intervals(activityId);
     },
     athlete: async () => {
       requests.push("athlete");
@@ -222,5 +228,64 @@ describe("sync", () => {
     const db = openDb(":memory:");
     await sync(db, fakeClient([events[0]!], activities), "2026-10-02");
     expect(loadSyncStatus(db)).toMatchObject({ error: null, succeededAt: expect.any(String), syncedThrough: null });
+  });
+});
+
+describe("refetchActivity", () => {
+  /** Synced on 2 Oct 2026, so a sync in November would no longer re-fetch any of it. */
+  async function synced() {
+    const db = openDb(":memory:");
+    await sync(db, fakeClient(events, activities), "2026-10-02");
+    return db;
+  }
+  const fixedReps = { analyzed: "2026-11-20T10:00:00Z", icu_intervals: [{ type: "WORK", moving_time: 360, gap: 3.3, average_heartrate: 166 }] };
+
+  it("reloads one Quality Run's Activity and its intervals, whatever its age, and nothing else", async () => {
+    const db = await synced();
+    const plannedBefore = loadPlannedWorkouts(db);
+    const renamed = activities.map((a) => (a.id === "i2" ? { ...a, name: "Fixed reps" } : { ...a, name: "Changed" }));
+    const client = fakeClient(events, renamed, undefined, () => fixedReps);
+
+    expect(await refetchActivity(db, client, "i2")).toBe("Updated");
+
+    expect(client.requests).toEqual(["activity i2", "intervals i2"]);
+    expect(loadActivities(db).map((a) => [a.id, a.name, a.intervals])).toEqual([
+      ["i1", "Everett - Easy Run", null],
+      ["i2", "Fixed reps", fixedReps],
+    ]);
+    expect(loadPlannedWorkouts(db)).toEqual(plannedBefore);
+  });
+
+  it("leaves stored data as it was when a request to intervals.icu fails", async () => {
+    const db = await synced();
+    const before = loadActivities(db);
+    const client = fakeClient(events, activities, undefined, () => {
+      throw new Error("intervals.icu activity/i2/intervals failed: 500");
+    });
+
+    await expect(refetchActivity(db, client, "i2")).rejects.toThrow("failed: 500");
+
+    expect(loadActivities(db)).toEqual(before);
+  });
+
+  it("removes an Activity that no longer exists on intervals.icu", async () => {
+    const db = await synced();
+
+    expect(await refetchActivity(db, fakeClient(events, []), "i2")).toBe("Deleted");
+
+    expect(loadActivities(db).map((a) => a.id)).toEqual(["i1"]);
+  });
+
+  it("stores an Activity no longer Matched to a Quality Run without its intervals", async () => {
+    const db = openDb(":memory:");
+    const plan = [event(1, "2026-09-29", "Easy Run"), event(2, "2026-09-30", "4 x 6:00 at 163–177 bpm")];
+    const run = activity("i2", "2026-09-30", "Run", { paired_event_id: 2 });
+    await sync(db, fakeClient(plan, [run]), "2026-10-02");
+    const client = fakeClient(plan, [{ ...run, paired_event_id: 1 }]);
+
+    expect(await refetchActivity(db, client, "i2")).toBe("NotQualityRun");
+
+    expect(client.requests).toEqual(["activity i2"]);
+    expect(loadActivities(db).map((a) => [a.id, a.pairedEventId, a.intervals])).toEqual([["i2", 1, null]]);
   });
 });

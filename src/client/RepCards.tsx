@@ -5,28 +5,43 @@ import { SVGRenderer } from "echarts/renderers";
 import { useEffect, useRef, useState } from "react";
 import { formatDuration, secondsPerMile } from "../domain/pace";
 import type { RepLengthCard, RepLengthRun } from "../domain/repProgress";
-import { escapeHtml, formatDate, formatText } from "./format";
+import { escapeHtml, formatDate, formatDateTime, formatText } from "./format";
 import { RunDrawer } from "./RunDrawer";
 import { usePrefersDark } from "./usePrefersDark";
 
 echarts.use([LineChart, ScatterChart, GridComponent, LegendComponent, MarkLineComponent, TooltipComponent, SVGRenderer]);
 
-/** One card per Rep Length: the latest Rep GAP, its change, and Rep GAP and Rep HR over time. */
-export function RepCards({ cards }: { cards: RepLengthCard[] }) {
+/**
+ * One card per Rep Length: the latest Rep GAP, its change, and Rep GAP and Rep HR over time.
+ * `onRefetched` reloads the page's data once a run has been re-fetched from intervals.icu.
+ */
+export function RepCards({ cards, onRefetched }: { cards: RepLengthCard[]; onRefetched: () => Promise<void> }) {
   if (cards.length === 0) return <p className="rest">No Quality Runs in the plan yet</p>;
   return (
     <div className="rep-cards">
       {cards.map((card) => (
-        <RepCard key={card.repLength} card={card} />
+        <RepCard key={card.repLength} card={card} onRefetched={onRefetched} />
       ))}
     </div>
   );
 }
 
-function RepCard({ card }: { card: RepLengthCard }) {
+function RepCard({ card, onRefetched }: { card: RepLengthCard; onRefetched: () => Promise<void> }) {
   const { latest, previous } = card;
   const [showEfficiency, setShowEfficiency] = useState(false);
-  const [selected, setSelected] = useState<RepLengthRun | null>(null);
+  // By Activity id, so the drawer follows the run through a reload, and closes when the run is no longer on the card.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = card.runs.find((r) => r.activityId === selectedId);
+  const [notice, setNotice] = useState<string | null>(null);
+  const select = (run: RepLengthRun) => {
+    setNotice(null);
+    setSelectedId(run.activityId);
+  };
+  async function gone(message: string) {
+    setSelectedId(null);
+    setNotice(message);
+    await onRefetched();
+  }
   return (
     <section className="rep-card">
       <header>
@@ -53,13 +68,22 @@ function RepCard({ card }: { card: RepLengthCard }) {
       ) : (
         <p className="rest">No Complete Quality Run yet</p>
       )}
+      {notice && <p className="note">{notice}</p>}
       {card.runs.length > 0 && (
         <>
-          <RepChart runs={card.runs} showEfficiency={showEfficiency} onSelect={setSelected} />
-          <RunTable runs={card.runs} onSelect={setSelected} />
+          <RepChart runs={card.runs} showEfficiency={showEfficiency} onSelect={select} />
+          <RunTable runs={card.runs} onSelect={select} />
         </>
       )}
-      {selected && <RunDrawer key={selected.activityId} run={selected} onClose={() => setSelected(null)} />}
+      {selected && (
+        <RunDrawer
+          key={selected.activityId}
+          run={selected}
+          onClose={() => setSelectedId(null)}
+          onRefetched={onRefetched}
+          onGone={gone}
+        />
+      )}
     </section>
   );
 }
@@ -368,6 +392,7 @@ function runTooltip(s: RepLengthRun | undefined): string {
   if (s.repHr !== null) lines.push(`Rep HR ${Math.round(s.repHr)} bpm`);
   if (s.overTarget) lines.push(`<span class="over-target">Over Target: a Rep averaged above ${s.hrCeiling} bpm</span>`);
   if (s.efficiency !== null) lines.push(`Efficiency ${s.efficiency.toFixed(2)} m/beat`);
+  if (s.intervalsChangedAt !== null) lines.push(`Intervals changed ${formatDateTime(s.intervalsChangedAt)}`);
   return lines.join("<br>");
 }
 

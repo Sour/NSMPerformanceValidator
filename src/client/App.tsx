@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { addDays } from "../domain/localDate";
+import { weekStart } from "../domain/trainingWeek";
 import type { VolumeWeek } from "../domain/weeklyVolume";
 import type {
   EasyResponse,
@@ -22,10 +24,29 @@ export function App() {
   const [easy, setEasy] = useState<EasyResponse | null>(null);
   const [thresholds, setThresholds] = useState<ThresholdsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // A date in the Training Week being viewed; null for the current one. A ref, so reloads after a sync keep the week.
+  const viewedWeek = useRef<string | null>(null);
+
+  const loadWeek = () => {
+    const date = viewedWeek.current;
+    return getJson<WeekResponse>(date === null ? "/api/week" : `/api/week?date=${date}`).then((w) => {
+      // A slower response for a week no longer being viewed is dropped.
+      if (viewedWeek.current === date) setWeek(w);
+    });
+  };
+  const viewWeek = (date: string | null) => {
+    viewedWeek.current = date;
+    loadWeek().catch((e: Error) => setError(e.message));
+  };
+  /** Moves `weeks` Training Weeks from the one last asked for, so quick clicks add up, staying within the range. */
+  const stepWeek = (weeks: number) => {
+    const to = addDays(weekStart(viewedWeek.current ?? week!.today), 7 * weeks);
+    if (to >= week!.earliest && to <= week!.latest) viewWeek(to);
+  };
 
   const load = () =>
     Promise.all([
-      getJson<WeekResponse>("/api/week").then(setWeek),
+      loadWeek(),
       getJson<ProgressResponse>("/api/progress").then(setProgress),
       getJson<VolumeResponse>("/api/volume").then(setVolume),
       getJson<EasyResponse>("/api/easy").then(setEasy),
@@ -38,6 +59,7 @@ export function App() {
 
   if (error) return <main><p className="error">Could not load: {error}</p></main>;
   if (!week || !progress || !volume || !easy || !thresholds) return <main><p>Loading…</p></main>;
+  const isThisWeek = week.today >= week.start && week.today <= week.end;
 
   return (
     <main>
@@ -46,7 +68,7 @@ export function App() {
       <ThresholdPaces thresholds={thresholds} />
 
       <h1 className="section-title">Rep GAP</h1>
-      <RepCards cards={progress.cards} />
+      <RepCards cards={progress.cards} onRefetched={load} />
 
       <h1 className="section-title">Weekly Volume</h1>
       <VolumeChart weeks={volume.weeks} />
@@ -54,11 +76,34 @@ export function App() {
       <h1 className="section-title">Easy GAP / Easy HR / Easy Efficiency</h1>
       <EasyChart runs={easy.runs} />
 
-      <h1 className="section-title">This Training Week</h1>
-      <p className="range">
-        {formatDate(week.start)} – {formatDate(week.end)}
-      </p>
-      <WeekVolume weeks={volume.weeks} start={week.start} />
+      <h1 className="section-title">{isThisWeek ? "This Training Week" : "Training Week"}</h1>
+      <div className="week-nav">
+        <button
+          type="button"
+          onClick={() => stepWeek(-1)}
+          disabled={week.start <= week.earliest}
+          aria-label="Previous Training Week"
+        >
+          ‹
+        </button>
+        <span className="range">
+          {formatDate(week.start)} – {formatDate(week.end)}
+        </span>
+        <button
+          type="button"
+          onClick={() => stepWeek(1)}
+          disabled={week.start >= week.latest}
+          aria-label="Next Training Week"
+        >
+          ›
+        </button>
+        {!isThisWeek && (
+          <button type="button" className="link" onClick={() => viewWeek(null)}>
+            This week
+          </button>
+        )}
+      </div>
+      <WeekVolume weeks={volume.weeks} start={week.start} isThisWeek={isThisWeek} />
 
       <ol className="days">
         {week.days.map((day) => (
@@ -80,7 +125,7 @@ export function App() {
 
       <h2>Unplanned Runs</h2>
       {week.unplannedRuns.length === 0 ? (
-        <p className="rest">None this week</p>
+        <p className="rest">None {isThisWeek ? "this" : "that"} week</p>
       ) : (
         <ul className="unplanned">
           {week.unplannedRuns.map((a) => (
@@ -155,16 +200,25 @@ function SyncBar({ onSynced }: { onSynced: () => Promise<void> }) {
   );
 }
 
-/** This Training Week's volume so far against last week's total. */
-function WeekVolume({ weeks, start }: { weeks: VolumeWeek[]; start: string }) {
+/**
+ * The viewed Training Week's volume, so far when it is this week, against the week before's total.
+ * Nothing for an upcoming week.
+ */
+function WeekVolume({ weeks, start, isThisWeek }: { weeks: VolumeWeek[]; start: string; isThisWeek: boolean }) {
   const i = weeks.findIndex((w) => w.start === start);
-  const thisWeek = weeks[i];
-  if (!thisWeek) return null;
-  const lastWeek = weeks[i - 1];
+  const viewed = weeks[i];
+  if (!viewed) return null;
+  const before = weeks[i - 1];
   return (
     <p className="week-volume">
-      <strong>{formatVolume(thisWeek.total)}</strong> so far
-      {lastWeek && <span className="range"> · last week {formatVolume(lastWeek.total)}</span>}
+      <strong>{formatVolume(viewed.total)}</strong>
+      {isThisWeek && " so far"}
+      {before && (
+        <span className="range">
+          {" "}
+          · {isThisWeek ? "last week" : "week before"} {formatVolume(before.total)}
+        </span>
+      )}
     </p>
   );
 }

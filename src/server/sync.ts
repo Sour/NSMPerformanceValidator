@@ -1,16 +1,18 @@
 import { addDays, localDate } from "../domain/localDate";
-import { isRun, matchActivities } from "../domain/matching";
+import { isRun, matchActivities, type Activity, type PlannedWorkout } from "../domain/matching";
 import { runType } from "../domain/runType";
 import type { Db } from "./db";
+import { runThresholdPace, toActivity, toPlannedWorkout, type IntervalsClient } from "./intervals";
 import {
-  runThresholdPace,
-  toActivity,
-  toPlannedWorkout,
-  type IntervalsActivity,
-  type IntervalsClient,
-  type IntervalsEvent,
-} from "./intervals";
-import { loadPlannedWorkouts, loadSyncStatus, recordSyncWithNothingToStore, saveRunThresholdPace, saveSync } from "./store";
+  deleteActivity,
+  loadActivities,
+  loadPlannedWorkouts,
+  loadSyncStatus,
+  recordSyncWithNothingToStore,
+  saveActivity,
+  saveRunThresholdPace,
+  saveSync,
+} from "./store";
 
 /** Marks a Planned Workout as part of the NSM plan, in its intervals.icu description. */
 const NSM_TAG = "[NSM]";
@@ -59,7 +61,9 @@ export async function sync(db: Db, client: IntervalsClient, today: string): Prom
   const runningActivities = (await client.activities(laterDate(from, nsmStart), addDays(today, 1))).filter(isRun);
 
   const intervals = new Map<string, unknown>();
-  for (const id of qualityRunActivityIds(planned, runningActivities)) intervals.set(id, await client.intervals(id));
+  for (const id of qualityRunActivityIds(planned.map(toPlannedWorkout), runningActivities.map(toActivity))) {
+    intervals.set(id, await client.intervals(id));
+  }
 
   saveSync(db, { from, to }, planned, runningActivities, intervals, {
     finishedAt: new Date().toISOString(),
@@ -78,10 +82,30 @@ async function syncRunThresholdPace(db: Db, client: IntervalsClient): Promise<vo
   saveRunThresholdPace(db, runThresholdPace(athlete));
 }
 
+/** What a Re-fetch found: the Activity is still Matched to a Quality Run, is no longer, or is gone from intervals.icu. */
+export type RefetchOutcome = "Updated" | "NotQualityRun" | "Deleted";
+
+/**
+ * Reloads one Activity, and its detected intervals while it is Matched to a Quality Run, from intervals.icu and stores
+ * them as a sync would, whatever the Activity's age. Nothing else is fetched or changed. An Activity intervals.icu no
+ * longer has, or that is no longer a running Activity, is removed. When a request fails, it rejects and stored data is unchanged.
+ */
+export async function refetchActivity(db: Db, client: IntervalsClient, activityId: string): Promise<RefetchOutcome> {
+  const fetched = await client.activity(activityId);
+  if (fetched === null || !isRun(fetched)) {
+    deleteActivity(db, activityId);
+    return fetched === null ? "Deleted" : "NotQualityRun";
+  }
+  const others = loadActivities(db).filter((a) => a.id !== activityId);
+  const isQualityRun = qualityRunActivityIds(loadPlannedWorkouts(db), [...others, toActivity(fetched)]).includes(activityId);
+  const intervals = isQualityRun ? await client.intervals(activityId) : null;
+  saveActivity(db, fetched, intervals, new Date().toISOString());
+  return isQualityRun ? "Updated" : "NotQualityRun";
+}
+
 /** The Activities Matched to a Quality Run, whose Reps are read from their detected intervals. */
-function qualityRunActivityIds(events: IntervalsEvent[], runningActivities: IntervalsActivity[]): string[] {
-  const planned = events.map(toPlannedWorkout);
-  return matchActivities(planned, runningActivities.map(toActivity))
+function qualityRunActivityIds(planned: PlannedWorkout[], runningActivities: Activity[]): string[] {
+  return matchActivities(planned, runningActivities)
     .filter((m) => runType(planned.find((p) => p.id === m.plannedWorkoutId)!.name) === "Quality Run")
     .map((m) => m.activityId);
 }

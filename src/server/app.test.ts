@@ -3,13 +3,14 @@ import {
   createApp,
   type EasyResponse,
   type ProgressResponse,
+  type RefetchResponse,
   type SyncStatusResponse,
   type ThresholdsResponse,
   type VolumeResponse,
   type WeekResponse,
 } from "./app";
 import { openDb } from "./db";
-import { saveRunThresholdPace, saveSync } from "./store";
+import { deleteActivity, saveActivity, saveRunThresholdPace, saveSync } from "./store";
 import type { SyncRunner } from "./syncRunner";
 
 describe("/api/sync", () => {
@@ -46,8 +47,21 @@ describe("/api/sync", () => {
 });
 
 describe("Quality Runs", () => {
-  /** A 4 x 6:00 Quality Run on 21 Oct 2026 Matched to an Activity with `reps` Reps of 6:00. */
-  function dbWithQualityRun(reps: number) {
+  const activity = {
+    id: "i1",
+    start_date_local: "2026-10-21T07:00:00",
+    type: "Run",
+    name: "Everett Running",
+    moving_time: 3600,
+    distance: 10000,
+    paired_event_id: 1,
+  };
+
+  /**
+   * A 4 x 6:00 Quality Run on 21 Oct 2026 Matched to an Activity with `reps` Reps of 6:00,
+   * whose intervals intervals.icu last analysed at `analyzed`.
+   */
+  function dbWithQualityRun(reps: number, analyzed?: string) {
     const db = openDb(":memory:");
     const event = {
       id: 1,
@@ -61,22 +75,14 @@ describe("Quality Runs", () => {
         steps: [{ reps: 4, steps: [{ duration: 360, intensity: "active" }, { duration: 90, intensity: "recovery" }] }],
       },
     };
-    const activity = {
-      id: "i1",
-      start_date_local: "2026-10-21T07:00:00",
-      type: "Run",
-      name: "Everett Running",
-      moving_time: 3600,
-      distance: 10000,
-      paired_event_id: 1,
-    };
     const icu_intervals = Array.from({ length: reps }, () => ({
       type: "WORK",
       moving_time: 360,
       gap: 3.2,
       average_heartrate: 166,
     }));
-    saveSync(db, { from: "2026-10-01", to: "2026-10-30" }, [event], [activity], new Map([["i1", { icu_intervals }]]), {
+    const response = analyzed === undefined ? { icu_intervals } : { analyzed, icu_intervals };
+    saveSync(db, { from: "2026-10-01", to: "2026-10-30" }, [event], [activity], new Map([["i1", response]]), {
       finishedAt: "2026-10-23T12:00:00.000Z",
       syncedThrough: "2026-10-23",
     });
@@ -116,6 +122,78 @@ describe("Quality Runs", () => {
       },
       previous: null,
     });
+  });
+
+  it("/api/week gives the Training Week containing any date, and how far back and forward weeks go", async () => {
+    const app = createApp(dbWithQualityRun(4), () => "2026-11-04", idleRunner());
+
+    const past = (await (await app.request("/api/week?date=2026-10-22")).json()) as WeekResponse;
+    expect(past).toMatchObject({ today: "2026-11-04", start: "2026-10-19", earliest: "2026-10-19", latest: "2026-11-02" });
+    expect(past.days.find((d) => d.date === "2026-10-21")!.workouts[0]).toMatchObject({
+      status: "Matched",
+      completion: "Complete",
+      activity: { id: "i1" },
+    });
+
+    const upcoming = (await (await app.request("/api/week?date=2026-11-12")).json()) as WeekResponse;
+    expect([upcoming.start, upcoming.end]).toEqual(["2026-11-09", "2026-11-15"]);
+
+    const current = (await (await app.request("/api/week")).json()) as WeekResponse;
+    expect(current.start).toBe("2026-11-02");
+  });
+
+  it("/api/week rejects a date that is not YYYY-MM-DD", async () => {
+    const app = createApp(dbWithQualityRun(4), () => "2026-11-04", idleRunner());
+    expect((await app.request("/api/week?date=next-week")).status).toBe(400);
+    expect((await app.request("/api/week?date=2026-13-01")).status).toBe(400);
+  });
+
+  it("POST /api/activities/:id/refetch re-fetches the run and responds with it as it now is", async () => {
+    const db = dbWithQualityRun(3);
+    const fixed = { icu_intervals: Array.from({ length: 4 }, () => ({ type: "WORK", moving_time: 360, gap: 3.3, average_heartrate: 168 })) };
+    const refetched: string[] = [];
+    const app = createApp(db, () => "2026-10-23", idleRunner(), undefined, async (id) => {
+      refetched.push(id);
+      saveActivity(db, activity, fixed, "2026-11-20T10:00:00.000Z");
+      return "Updated";
+    });
+
+    const res = await app.request("/api/activities/i1/refetch", { method: "POST" });
+
+    expect(refetched).toEqual(["i1"]);
+    const body = (await res.json()) as RefetchResponse;
+    expect(body).toMatchObject({ outcome: "Updated", run: { activityId: "i1", complete: true, repsRun: 4, repHr: 168 } });
+    const week = (await (await app.request("/api/week")).json()) as WeekResponse;
+    expect(week.days.find((d) => d.date === "2026-10-21")!.workouts[0]!.completion).toBe("Complete");
+  });
+
+  it("POST /api/activities/:id/refetch says when the Activity is gone", async () => {
+    const db = dbWithQualityRun(4);
+    const app = createApp(db, () => "2026-10-23", idleRunner(), undefined, async (id) => {
+      deleteActivity(db, id);
+      return "Deleted";
+    });
+    const res = await app.request("/api/activities/i1/refetch", { method: "POST" });
+    expect(await res.json()).toEqual<RefetchResponse>({ outcome: "Deleted" });
+  });
+
+  it("POST /api/activities/:id/refetch responds 502 with the error when intervals.icu fails", async () => {
+    const app = createApp(dbWithQualityRun(4), () => "2026-10-23", idleRunner(), undefined, async () => {
+      throw new Error("intervals.icu activity/i1 failed: 500");
+    });
+    const res = await app.request("/api/activities/i1/refetch", { method: "POST" });
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "intervals.icu activity/i1 failed: 500" });
+  });
+
+  it("/api/progress says when intervals.icu last changed each Quality Run's intervals, or null when it does not say", async () => {
+    const changed = createApp(dbWithQualityRun(4, "2026-10-24T01:44:28.459+00:00"), () => "2026-10-23", idleRunner());
+    const withTime = (await (await changed.request("/api/progress")).json()) as ProgressResponse;
+    expect(withTime.cards[0]!.runs[0]!.intervalsChangedAt).toBe("2026-10-24T01:44:28.459+00:00");
+
+    const unknown = createApp(dbWithQualityRun(4), () => "2026-10-23", idleRunner());
+    const withoutTime = (await (await unknown.request("/api/progress")).json()) as ProgressResponse;
+    expect(withoutTime.cards[0]!.runs[0]!.intervalsChangedAt).toBeNull();
   });
 });
 

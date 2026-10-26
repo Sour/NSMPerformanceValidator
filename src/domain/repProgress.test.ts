@@ -7,7 +7,7 @@ function planned(id: number, date: string, name: string, recovery: number | null
 }
 
 function activity(id: number, date: string, intervals: DetectedInterval[] | null): AnalysedActivity {
-  return { id: `a${id}`, date, type: "Run", name: "Everett Running", movingTime: 3600, pairedEventId: id, intervals };
+  return { id: `a${id}`, date, type: "Run", name: "Everett Running", movingTime: 3600, pairedEventId: id, intervals, intervalsChangedAt: null };
 }
 
 function work(movingTime: number, gap: number, averageHeartrate = 165): DetectedInterval {

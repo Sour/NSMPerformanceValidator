@@ -32,13 +32,17 @@ export function weekStart(date: string): string {
   return addDays(date, -((dayOfWeek(date) + 6) % 7));
 }
 
-/** The Training Week (Monday to Sunday) containing `today`, a YYYY-MM-DD date. */
+/**
+ * The Training Week (Monday to Sunday) containing `date`, by default `today`; both YYYY-MM-DD dates.
+ * Planned Workouts without a Match are Missed before `today` and Upcoming from it.
+ */
 export function trainingWeek<A extends Activity>(
   today: string,
   planned: PlannedWorkout[],
   activities: A[],
+  date = today,
 ): TrainingWeek<A> {
-  const start = weekStart(today);
+  const start = weekStart(date);
   const dates = Array.from({ length: 7 }, (_, i) => addDays(start, i));
   const matches = matchActivities(planned, activities);
   const activityFor = (p: PlannedWorkout) => {
@@ -64,4 +68,19 @@ export function trainingWeek<A extends Activity>(
       (a) => isRun(a) && a.date >= start && a.date <= end && !matches.some((m) => m.activityId === a.id),
     ),
   };
+}
+
+/** The Mondays of the earliest and latest Training Weeks there is anything to show for. */
+export interface TrainingWeekRange {
+  earliest: string;
+  latest: string;
+}
+
+/**
+ * From the Training Week holding the first Planned Workout to the one holding the last, widened to include
+ * the Training Week containing `today`.
+ */
+export function trainingWeekRange(today: string, planned: PlannedWorkout[]): TrainingWeekRange {
+  const weeks = [today, ...planned.map((p) => p.date)].map(weekStart).sort();
+  return { earliest: weeks[0]!, latest: weeks.at(-1)! };
 }

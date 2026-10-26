@@ -5,25 +5,39 @@ import {
   type AnalysedActivity,
   type AnalysedPlannedWorkout,
   type RepLengthCard,
+  type RepLengthRun,
 } from "../domain/repProgress";
 import { thresholdPaces, type ThresholdPaces } from "../domain/thresholdPace";
-import { trainingWeek, type TrainingDay, type TrainingWeek, type WeekWorkout } from "../domain/trainingWeek";
+import { isLocalDate } from "../domain/localDate";
+import {
+  trainingWeek,
+  trainingWeekRange,
+  type TrainingDay,
+  type TrainingWeek,
+  type TrainingWeekRange,
+  type WeekWorkout,
+} from "../domain/trainingWeek";
 import { weeklyVolume, type VolumeWeek } from "../domain/weeklyVolume";
 import type { Db } from "./db";
-import { activityAverages, detectedIntervals, plannedRecovery } from "./intervals";
+import { activityAverages, detectedIntervals, intervalsAnalyzedAt, plannedRecovery } from "./intervals";
 import { loadActivities, loadPlannedWorkouts, loadRunThresholdPace, loadSyncStatus, type StoredActivity } from "./store";
+import type { RefetchOutcome } from "./sync";
 import type { SyncRunner } from "./syncRunner";
 
 export type WeekActivity = Omit<StoredActivity, "raw" | "intervals">;
 /** A Matched Quality Run is Complete or Incomplete; null for other Planned Workouts. */
 export type WeekWorkoutResponse = WeekWorkout<WeekActivity> & { completion: "Complete" | "Incomplete" | null };
-export type WeekResponse = Omit<TrainingWeek<WeekActivity>, "days"> & {
+/** The Training Week asked for, and through `earliest` and `latest` how far back and forward weeks may be asked for. */
+export type WeekResponse = Omit<TrainingWeek<WeekActivity>, "days"> &
+  TrainingWeekRange & {
   today: string;
   days: (Omit<TrainingDay<WeekActivity>, "workouts"> & { workouts: WeekWorkoutResponse[] })[];
 };
 export interface ProgressResponse {
   cards: RepLengthCard[];
 }
+/** A re-fetched Activity is either still Matched to a Quality Run, given as that run now is, or no longer. */
+export type RefetchResponse = { outcome: "Updated"; run: RepLengthRun } | { outcome: Exclude<RefetchOutcome, "Updated"> };
 export interface VolumeResponse {
   /** Oldest first; the last is this Training Week. */
   weeks: VolumeWeek[];
@@ -53,7 +67,18 @@ export interface SyncStatusResponse {
   running: boolean;
 }
 
-export function createApp(db: Db, today: () => string, syncRunner: SyncRunner, settings: Settings = { lt1Hr: null }) {
+/** Reloads one Activity from intervals.icu; see `refetchActivity`. */
+export type Refetch = (activityId: string) => Promise<RefetchOutcome>;
+
+export function createApp(
+  db: Db,
+  today: () => string,
+  syncRunner: SyncRunner,
+  settings: Settings = { lt1Hr: null },
+  refetch: Refetch = async () => {
+    throw new Error("Re-fetch is not available");
+  },
+) {
   const syncStatus = (): SyncStatusResponse => {
     const status = loadSyncStatus(db);
     return {
@@ -67,20 +92,23 @@ export function createApp(db: Db, today: () => string, syncRunner: SyncRunner, s
   return new Hono()
     .get("/api/week", (c) => {
       const date = today();
+      const viewed = c.req.query("date") ?? date;
+      if (!isLocalDate(viewed)) return c.json({ error: "date must be YYYY-MM-DD" }, 400);
       const analysedPlanned = analysedPlannedWorkouts(db);
       const planned = analysedPlanned.map(({ recovery: _, ...p }) => p);
       const analysed = analysedActivities(db);
-      const activities = analysed.map(({ intervals: _, ...a }) => a);
-      const week = trainingWeek(date, planned, activities);
-      const qualityRuns = repLengthCards(analysedPlanned, analysed).flatMap((card) => card.runs);
+      const activities = analysed.map(({ intervals: _, intervalsChangedAt: __, ...a }) => a);
+      const week = trainingWeek(date, planned, activities, viewed);
+      const runs = qualityRuns(analysedPlanned, analysed);
       const completion = (w: WeekWorkout<WeekActivity>): WeekWorkoutResponse["completion"] => {
-        const run = qualityRuns.find((r) => r.activityId === w.activity?.id);
+        const run = runs.find((r) => r.activityId === w.activity?.id);
         if (!run) return null;
         return run.complete ? "Complete" : "Incomplete";
       };
       return c.json<WeekResponse>({
         today: date,
         ...week,
+        ...trainingWeekRange(date, planned),
         days: week.days.map((d) => ({ ...d, workouts: d.workouts.map((w) => ({ ...w, completion: completion(w) })) })),
       });
     })
@@ -95,17 +123,33 @@ export function createApp(db: Db, today: () => string, syncRunner: SyncRunner, s
     .get("/api/easy", (c) => c.json<EasyResponse>({ runs: easyRuns(db) }))
     .get("/api/thresholds", (c) => {
       const analysedPlanned = analysedPlannedWorkouts(db);
-      const qualityRuns = repLengthCards(analysedPlanned, analysedActivities(db)).flatMap((card) => card.runs);
+      const runs = qualityRuns(analysedPlanned, analysedActivities(db));
       return c.json<ThresholdsResponse>({
-        ...thresholdPaces(analysedPlanned, qualityRuns, easyRuns(db), today(), settings.lt1Hr),
+        ...thresholdPaces(analysedPlanned, runs, easyRuns(db), today(), settings.lt1Hr),
         icuThresholdPace: loadRunThresholdPace(db),
       });
+    })
+    .post("/api/activities/:id/refetch", async (c) => {
+      let outcome: RefetchOutcome;
+      try {
+        outcome = await refetch(c.req.param("id"));
+      } catch (e) {
+        return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
+      }
+      if (outcome !== "Updated") return c.json<RefetchResponse>({ outcome });
+      const run = qualityRuns(analysedPlannedWorkouts(db), analysedActivities(db)).find((r) => r.activityId === c.req.param("id"));
+      return c.json<RefetchResponse>(run ? { outcome, run } : { outcome: "NotQualityRun" });
     })
     .get("/api/sync", (c) => c.json(syncStatus()))
     .post("/api/sync", async (c) => {
       await syncRunner.run();
       return c.json(syncStatus());
     });
+}
+
+/** Every Matched Quality Run with its Reps, across all Rep Lengths. */
+function qualityRuns(planned: AnalysedPlannedWorkout[], activities: AnalysedActivity[]): RepLengthRun[] {
+  return repLengthCards(planned, activities).flatMap((card) => card.runs);
 }
 
 /** Every Matched Easy Run and Long Run with its Easy GAP and Easy HR, oldest first. */
@@ -120,10 +164,11 @@ function analysedPlannedWorkouts(db: Db): AnalysedPlannedWorkout[] {
   return loadPlannedWorkouts(db).map(({ raw, ...p }) => ({ ...p, recovery: plannedRecovery(raw) }));
 }
 
-/** Stored Activities without their raw response, with their detected intervals read. */
+/** Stored Activities without their raw response, with their detected intervals and when they last changed read. */
 function analysedActivities(db: Db): (AnalysedActivity & Pick<StoredActivity, "distance">)[] {
   return loadActivities(db).map(({ raw: _, intervals, ...a }) => ({
     ...a,
     intervals: intervals === null ? null : detectedIntervals(intervals),
+    intervalsChangedAt: intervalsAnalyzedAt(intervals),
   }));
 }

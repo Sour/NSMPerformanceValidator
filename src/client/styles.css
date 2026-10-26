@@ -232,6 +232,38 @@ h2 {
   overflow-x: auto;
 }
 
+.week-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 0;
+}
+
+.week-nav button {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0 10px;
+  line-height: 1.75;
+  cursor: pointer;
+}
+
+.week-nav button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.week-nav button.link {
+  color: var(--series-1);
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.875rem;
+}
+
 .week-volume {
   margin: 4px 0 0;
   font-variant-numeric: tabular-nums;
@@ -298,6 +330,12 @@ h2 {
 }
 
 .rep-card .unit,
+.rep-card > .note {
+  margin: 8px 0 0;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
 .rep-card .change {
   color: var(--muted);
   font-size: 0.875rem;
@@ -503,6 +541,37 @@ h2 {
   padding-left: 6px;
   color: #fff;
   font-weight: 600;
+}
+
+.run-drawer .refetch {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+}
+
+.run-drawer .refetch .note {
+  color: var(--muted);
+}
+
+.run-drawer .refetch button {
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.run-drawer .refetch button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.run-drawer .refetch .error {
+  margin: 0;
+  font-size: 0.875rem;
 }
 
 .activity-link {

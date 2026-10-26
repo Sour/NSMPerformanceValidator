@@ -11,6 +11,13 @@ export function addDays(date: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** Whether `text` is a real calendar date written as YYYY-MM-DD. */
+export function isLocalDate(text: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return false;
+  const d = toUtc(text);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === text;
+}
+
 /** 0 for Sunday through 6 for Saturday. */
 export function dayOfWeek(date: string): number {
   return toUtc(date).getUTCDay();

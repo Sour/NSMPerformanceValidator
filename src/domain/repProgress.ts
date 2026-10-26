@@ -1,8 +1,11 @@
 import { matchActivities, type Activity, type PlannedWorkout } from "./matching";
 import { aboveCeiling, heartRateCeiling, qualityRun, qualityRunFormat, type DetectedInterval, type QualityRunFormat } from "./qualityRun";
 
-/** An Activity with the intervals intervals.icu detected in it; null until they have been fetched. */
-export type AnalysedActivity = Activity & { intervals: DetectedInterval[] | null };
+/**
+ * An Activity with the intervals intervals.icu detected in it; null until they have been fetched.
+ * `intervalsChangedAt` is when intervals.icu last analysed them, as an ISO timestamp; null when it does not say.
+ */
+export type AnalysedActivity = Activity & { intervals: DetectedInterval[] | null; intervalsChangedAt: string | null };
 
 /** A Planned Workout with the recovery between its Reps, in seconds, read from its structure; null when it has none. */
 export type AnalysedPlannedWorkout = PlannedWorkout & { recovery: number | null };
@@ -33,6 +36,8 @@ export interface RepLengthRun {
   recovery: number | null;
   /** How this run's rep count or recovery changed from the previous run with this Rep Length; null when neither did. */
   formatChange: FormatChange | null;
+  /** When intervals.icu last analysed the Activity's intervals, as an ISO timestamp; null when it does not say. */
+  intervalsChangedAt: string | null;
 }
 
 /** One Rep of a Quality Run. */
@@ -69,13 +74,14 @@ export function repLengthCards(planned: AnalysedPlannedWorkout[], activities: An
   for (const p of planned) {
     const format = qualityRunFormat(p.name);
     const activityId = matches.find((m) => m.plannedWorkoutId === p.id)?.activityId;
-    const intervals = activities.find((a) => a.id === activityId)?.intervals;
-    if (!format || !activityId || !intervals) continue;
+    const activity = activities.find((a) => a.id === activityId);
+    const intervals = activity?.intervals;
+    if (!format || !activity || !intervals) continue;
     const hrCeiling = heartRateCeiling(p.name);
     const run = qualityRun(format, intervals, hrCeiling);
     runs.push({
       date: p.date,
-      activityId,
+      activityId: activity.id,
       plannedWorkoutName: p.name,
       format,
       complete: run.complete,
@@ -88,6 +94,7 @@ export function repLengthCards(planned: AnalysedPlannedWorkout[], activities: An
       overTarget: run.overTarget,
       recovery: p.recovery,
       formatChange: null,
+      intervalsChangedAt: activity.intervalsChangedAt,
     });
   }
   runs.sort((a, b) => a.date.localeCompare(b.date));

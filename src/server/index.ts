@@ -4,14 +4,16 @@ import { createApp } from "./app";
 import { config, localToday } from "./config";
 import { openDb } from "./db";
 import { createIntervalsClient } from "./intervals";
-import { sync } from "./sync";
+import { refetchActivity, sync } from "./sync";
 import { createSyncRunner } from "./syncRunner";
 
 const db = openDb(config.databasePath);
 const client = createIntervalsClient(config.athleteId, config.apiKey);
 const syncRunner = createSyncRunner(db, () => sync(db, client, localToday()));
 
-const app = createApp(db, localToday, syncRunner, { lt1Hr: config.lt1Hr });
+const app = createApp(db, localToday, syncRunner, { lt1Hr: config.lt1Hr }, (activityId) =>
+  refetchActivity(db, client, activityId),
+);
 app.use("/*", serveStatic({ root: "dist/client" }));
 
 serve({ fetch: app.fetch, port: config.port }, ({ port }) => {
