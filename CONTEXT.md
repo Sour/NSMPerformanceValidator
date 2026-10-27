@@ -27,7 +27,7 @@ The planned duration of one Rep (e.g. 10:00, 6:00, 3:00). Progress is only ever 
 _Avoid_: Format (when only the duration is meant)
 
 **Rep**:
-One timed work interval of a Quality Run, run at the planned heart-rate target (90–98% LTHR). Warm-up, cool-down and recoveries are not Reps.
+One timed work interval of a Quality Run, run at the planned heart-rate target (90–98% LTHR) and lasting about the Rep Length. Every such interval is a Rep, even beyond the planned rep count. Warm-up, cool-down, recoveries and short efforts such as strides are not Reps.
 _Avoid_: Interval, lap, set
 
 **LTHR**:
@@ -39,12 +39,20 @@ The runner's first (aerobic) lactate-threshold heart rate. Unless the runner set
 _Avoid_: Aerobic threshold, easy ceiling
 
 **Complete / Incomplete**:
-A Quality Run is Complete when every planned Rep was run; otherwise it is Incomplete. Only Complete Quality Runs count toward progress; Incomplete ones are shown but not trended.
+A Quality Run is Complete when at least the planned number of Reps was run; otherwise it is Incomplete. Only Complete Quality Runs count toward progress; Incomplete ones are shown but not trended.
 _Avoid_: Valid, partial, failed
 
 **Over Target**:
-A Quality Run in which at least one Rep's average heart rate exceeded the top of the planned heart-rate target. It still counts toward progress but is flagged, because its pace overstates fitness.
+A Quality Run in which at least one Rep's average heart rate exceeded the top of the planned heart-rate target, or an Easy Run or Long Run that spent more than 10% of its moving time above the top of its Easy HR Target. It still counts toward progress but is flagged, because its pace overstates fitness.
 _Avoid_: Too hard, red zone
+
+**Max HR**:
+The runner's maximum heart rate, as recorded in intervals.icu. It anchors the Easy HR Target.
+_Avoid_: Peak HR
+
+**Easy HR Target**:
+The planned heart-rate window of an Easy Run or Long Run, as a percentage of Max HR (e.g. 62–70%). It is read from the Planned Workouts, so it follows the plan; the current one is given by the most recent Easy Run or Long Run.
+_Avoid_: Easy zone, Z1, easy ceiling
 
 **Easy Run**:
 A low-intensity continuous run between Quality Runs.
@@ -67,6 +75,14 @@ _Avoid_: Pairing (that is intervals.icu's mechanism, one way a Match is made)
 A running Activity with no Match. It counts toward Weekly Volume but has no Run Type.
 _Avoid_: Extra run, bonus run
 
+**Grey Zone Run**:
+An Easy Run or Long Run that spent more than 25% of its moving time above the top of its Easy HR Target: too hard to be easy, too easy to be quality, so it does little for fitness. It is shown but does not count toward Easy Pace progress.
+_Avoid_: Not Easy, too hard, junk run
+
+**Walk Break**:
+A stretch of an Easy Run or Long Run walked rather than run: cadence below a walking threshold for at least 15 seconds. Walk Breaks are fine; they are tracked so the runner can see them fade as aerobic fitness improves, and they never stop a run counting toward progress.
+_Avoid_: Stop, pause (a stop is excluded from moving time; a walk is not)
+
 **Missed**:
 A past Planned Workout with no Matched Activity.
 _Avoid_: Skipped
@@ -87,6 +103,10 @@ The average heart rate across a Quality Run's Reps, shown alongside Rep GAP to r
 **Easy GAP / Easy HR**:
 Grade-adjusted pace and average heart rate of an Easy Run or Long Run, tracked over time as a slow-moving aerobic fitness signal.
 
+**Easy Pace**:
+An Easy Run's or Long Run's Easy GAP scaled to the middle of the current Easy HR Target, assuming grade-adjusted speed rises in proportion to heart rate. Walk Breaks stay in, since needing to walk is part of the runner's fitness. It answers "am I getting faster at the same easy effort", one value per run; the headline easy progress number.
+_Avoid_: Normalised pace, Easy GAP (when the scaled number is meant), aerobic pace
+
 **LT1 Pace / LT2 Pace**:
 The estimated grade-adjusted pace at which the runner's heart rate would sit at LT1 HR or LTHR. Both are read from a single pace-versus-heart-rate line fitted to the Rep GAP / Rep HR of Complete Quality Runs and the Easy GAP / Easy HR of Easy Runs and Long Runs over the last six Training Weeks. Over Target Quality Runs are included; Incomplete ones and Unplanned Runs are not.
 _Avoid_: Threshold pace (it does not say which threshold), race pace
@@ -99,8 +119,16 @@ _Avoid_: No data, unknown
 The threshold pace in the runner's intervals.icu Run settings. It is shown only as a reference beside LT2 Pace, so the runner can see when that setting is out of date; it never feeds the estimate.
 
 **Weekly Volume**:
-Total running distance and time in a Training Week, across all Run Types.
+Total running distance and time in a Training Week, across all Run Types. It is broken down by Run Type, except that a Quality Run contributes two parts: its Rep Volume and its Quality Support.
 _Avoid_: Mileage, load
+
+**Rep Volume**:
+The distance and time of a Quality Run's Reps: the running done at the Quality Run's heart-rate target.
+_Avoid_: Quality volume, hard miles
+
+**Quality Support**:
+The distance and time of a Quality Run that is not a Rep: its warm-up, cool-down and recoveries.
+_Avoid_: Quality easy, junk miles
 
 **Training Week**:
 Monday to Sunday, matching how the plan is laid out.
