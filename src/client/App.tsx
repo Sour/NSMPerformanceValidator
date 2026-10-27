@@ -73,8 +73,8 @@ export function App() {
       <h1 className="section-title">Weekly Volume</h1>
       <VolumeChart weeks={volume.weeks} />
 
-      <h1 className="section-title">Easy GAP / Easy HR / Easy Efficiency</h1>
-      <EasyChart runs={easy.runs} />
+      <h1 className="section-title">Easy Pace</h1>
+      <EasyChart easy={easy} />
 
       <h1 className="section-title">{isThisWeek ? "This Training Week" : "Training Week"}</h1>
       <div className="week-nav">

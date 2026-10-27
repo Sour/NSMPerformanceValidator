@@ -1,4 +1,5 @@
-import type { EasyAverages } from "../domain/easyTrend";
+import type { ActivityStreams } from "../domain/activityStreams";
+import type { EasyAverages, EasyHrTarget } from "../domain/easyTrend";
 import { localDate } from "../domain/localDate";
 import type { Activity, PlannedWorkout } from "../domain/matching";
 import type { DetectedInterval } from "../domain/qualityRun";
@@ -56,6 +57,7 @@ export function activityAverages(activity: unknown): EasyAverages {
 
 interface WorkoutStep {
   reps?: number;
+  hr?: { start?: unknown; end?: unknown; units?: unknown };
   intensity?: string;
   duration?: number;
   steps?: WorkoutStep[];
@@ -70,6 +72,24 @@ export function plannedRecovery(event: unknown): number | null {
   const steps = doc?.steps ?? [];
   const recovery = steps.find((s) => s.reps !== undefined)?.steps?.find((s) => s.intensity === "recovery");
   return typeof recovery?.duration === "number" ? recovery.duration : null;
+}
+
+/**
+ * The Easy HR Target read from an intervals.icu calendar event's `workout_doc`: the first step, at any depth, whose
+ * heart-rate target is given as `%hr`, a percentage of Max HR. Null when it has no such step.
+ */
+export function plannedEasyHrTarget(event: unknown): EasyHrTarget | null {
+  const doc = (event as { workout_doc?: { steps?: WorkoutStep[] } | null } | null)?.workout_doc;
+  const find = (steps: WorkoutStep[]): EasyHrTarget | null => {
+    for (const s of steps) {
+      const hr = s.hr;
+      if (hr?.units === "%hr" && typeof hr.start === "number" && typeof hr.end === "number") return { low: hr.start, high: hr.end };
+      const nested = find(s.steps ?? []);
+      if (nested) return nested;
+    }
+    return null;
+  };
+  return find(doc?.steps ?? []);
 }
 
 /** The intervals intervals.icu detected in an Activity, read from its `GET /activity/{id}/intervals` response. */
@@ -93,13 +113,41 @@ export function intervalsAnalyzedAt(response: unknown): string | null {
 }
 
 /**
+ * An Activity's streams, read from its `GET /activity/{id}/streams` response. Null when it has no time stream, as when
+ * it was not fetched; a heart-rate or cadence stream not recorded is null on its own.
+ */
+export function activityStreams(response: unknown): ActivityStreams | null {
+  const list = Array.isArray(response) ? (response as { type?: unknown; data?: unknown }[]) : [];
+  const stream = (type: string) => {
+    const data = list.find((s) => s.type === type)?.data;
+    return Array.isArray(data) ? data.map((v) => (typeof v === "number" ? v : null)) : null;
+  };
+  const time = stream("time");
+  if (time === null || time.some((t) => t === null)) return null;
+  return { time: time as number[], heartrate: stream("heartrate"), cadence: stream("cadence") };
+}
+
+/**
  * The intervals.icu Threshold Pace of the athlete's Run settings, read from a `GET /athlete/{id}` response:
  * the `threshold_pace` of the sport settings covering Run, always metres per second. Null when there is none.
  */
 export function runThresholdPace(athlete: unknown): number | null {
-  const settings = (athlete as { sportSettings?: { types?: unknown; threshold_pace?: unknown }[] } | null)?.sportSettings;
-  const run = (Array.isArray(settings) ? settings : []).find((s) => Array.isArray(s.types) && s.types.includes("Run"));
-  return typeof run?.threshold_pace === "number" && run.threshold_pace > 0 ? run.threshold_pace : null;
+  return positive(runSettings(athlete)?.threshold_pace);
+}
+
+/** The Max HR of the athlete's Run settings in bpm, read from a `GET /athlete/{id}` response. Null when there is none. */
+export function runMaxHr(athlete: unknown): number | null {
+  return positive(runSettings(athlete)?.max_hr);
+}
+
+/** The sport settings covering Run in a `GET /athlete/{id}` response. */
+function runSettings(athlete: unknown): Record<string, unknown> | undefined {
+  const settings = (athlete as { sportSettings?: { types?: unknown }[] } | null)?.sportSettings;
+  return (Array.isArray(settings) ? settings : []).find((s) => Array.isArray(s.types) && s.types.includes("Run"));
+}
+
+function positive(value: unknown): number | null {
+  return typeof value === "number" && value > 0 ? value : null;
 }
 
 /** Read access to one athlete on intervals.icu. Dates are inclusive YYYY-MM-DD local dates. */
@@ -110,7 +158,9 @@ export interface IntervalsClient {
   activity(activityId: string): Promise<IntervalsActivity | null>;
   /** The intervals intervals.icu detected in one Activity; read it with `detectedIntervals`. */
   intervals(activityId: string): Promise<unknown>;
-  /** The athlete with their sport settings; read it with `runThresholdPace`. */
+  /** One Activity's time, heart-rate and cadence streams; read them with `activityStreams`. */
+  streams(activityId: string): Promise<unknown>;
+  /** The athlete with their sport settings; read it with `runThresholdPace` and `runMaxHr`. */
   athlete(): Promise<unknown>;
 }
 
@@ -148,6 +198,7 @@ export function createIntervalsClient(athleteId: string, apiKey: string): Interv
     activities: (oldest, newest) => get(`${athlete}/activities`, { oldest, newest }),
     activity: (activityId) => getIfFound(`activity/${encodeURIComponent(activityId)}`),
     intervals: (activityId) => get(`activity/${encodeURIComponent(activityId)}/intervals`),
+    streams: (activityId) => get(`activity/${encodeURIComponent(activityId)}/streams`, { types: "time,heartrate,cadence" }),
     athlete: () => get(athlete),
   };
 }

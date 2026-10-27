@@ -1,61 +1,89 @@
-import { LineChart } from "echarts/charts";
+import { BarChart, LineChart, ScatterChart } from "echarts/charts";
 import { GridComponent, LegendComponent, TooltipComponent } from "echarts/components";
 import * as echarts from "echarts/core";
 import { SVGRenderer } from "echarts/renderers";
 import { useEffect, useRef } from "react";
-import type { EasyRunType, EasyTrendRun } from "../domain/easyTrend";
+import type { EasyPaceTrend, EasyRunType, EasyTrend, EasyTrendRun } from "../domain/easyTrend";
 import { formatDuration, secondsPerMile } from "../domain/pace";
 import { escapeHtml, formatDate, formatHr, formatPace } from "./format";
 import { usePrefersDark } from "./usePrefersDark";
 
-echarts.use([LineChart, GridComponent, LegendComponent, TooltipComponent, SVGRenderer]);
+echarts.use([LineChart, ScatterChart, BarChart, GridComponent, LegendComponent, TooltipComponent, SVGRenderer]);
 
 /**
- * Easy GAP and Easy HR over time for every Matched Easy Run and Long Run, Easy Efficiency below them,
- * and a table of the same numbers.
+ * Easy Pace over time for every Matched Easy Run and Long Run, with each Run Type's 6-Training-Week trend and its
+ * change in a headline, minutes walked per run below, and a table of the same numbers.
  */
-export function EasyChart({ runs }: { runs: EasyTrendRun[] }) {
-  if (runs.length === 0) return <p className="rest">No Easy Runs or Long Runs yet</p>;
+export function EasyChart({ easy }: { easy: EasyTrend }) {
+  if (easy.runs.length === 0) return <p className="rest">No Easy Runs or Long Runs yet</p>;
   return (
     <section className="easy">
-      <EasyLines runs={runs} option={chartOption} />
-      <EasyLines runs={runs} option={efficiencyOption} className="easy-chart efficiency" />
-      <EasyTable runs={runs} />
+      {easy.referenceHr === null ? (
+        <p className="rest">
+          Easy Pace cannot be computed: it needs the Max HR of your intervals.icu Run settings and an Easy HR Target in the
+          plan
+        </p>
+      ) : (
+        <>
+          <Headlines easy={easy} />
+          <EasyPaceChart easy={easy} />
+        </>
+      )}
+      <EasyTable runs={easy.runs} />
     </section>
   );
 }
 
-function EasyLines({
-  runs,
-  option,
-  className = "easy-chart",
-}: {
-  runs: EasyTrendRun[];
-  option: (runs: EasyTrendRun[], c: ChartColors) => echarts.EChartsCoreOption;
-  className?: string;
-}) {
+/** Each Run Type's change in Easy Pace over the window, e.g. "Easy Run −8 s/mi over 6 weeks · 2 Grey Zone Runs". */
+function Headlines({ easy }: { easy: EasyTrend }) {
+  return (
+    <div className="easy-headlines">
+      {runTypesIn(easy.runs).map((t) => (
+        <p key={t} className="easy-headline">
+          <span className="threshold-name">{t}</span> <strong>{change(easy.trends[t])}</strong>
+          {easy.trends[t].greyZoneRuns > 0 && (
+            <span className="range">
+              {" "}
+              · {easy.trends[t].greyZoneRuns} Grey Zone Run{easy.trends[t].greyZoneRuns === 1 ? "" : "s"}
+            </span>
+          )}
+        </p>
+      ))}
+    </div>
+  );
+}
+
+/** The trend line's change in seconds per mile; negative is faster. */
+function change(trend: EasyPaceTrend): string {
+  if (trend.line === null) return "Not enough data";
+  const seconds = Math.round(secondsPerMile(trend.line.end) - secondsPerMile(trend.line.start));
+  return `${seconds > 0 ? "+" : seconds < 0 ? "−" : "±"}${Math.abs(seconds)} s/mi over 6 weeks`;
+}
+
+function EasyPaceChart({ easy }: { easy: EasyTrend }) {
   const ref = useRef<HTMLDivElement>(null);
   const dark = usePrefersDark();
 
   useEffect(() => {
     const el = ref.current!;
     const chart = echarts.init(el, null, { renderer: "svg" });
-    chart.setOption(option(runs, chartColors()));
+    chart.setOption(chartOption(easy, chartColors()));
     const observer = new ResizeObserver(() => chart.resize());
     observer.observe(el);
     return () => {
       observer.disconnect();
       chart.dispose();
     };
-  }, [runs, option, dark]);
+  }, [easy, dark]);
 
-  return <div ref={ref} className={className} />;
+  return <div ref={ref} className="easy-chart" />;
 }
 
 interface ChartColors {
-  gap: string;
-  hr: string;
-  efficiency: string;
+  pace: string;
+  trend: string;
+  walk: string;
+  overTarget: string;
   text: string;
   muted: string;
   grid: string;
@@ -66,9 +94,10 @@ function chartColors(): ChartColors {
   const style = getComputedStyle(document.documentElement);
   const v = (name: string) => style.getPropertyValue(name).trim();
   return {
-    gap: v("--series-1"),
-    hr: v("--series-2"),
-    efficiency: v("--series-3"),
+    pace: v("--series-1"),
+    trend: v("--series-2"),
+    walk: v("--series-3"),
+    overTarget: v("--over-target"),
     text: v("--text"),
     muted: v("--muted"),
     grid: v("--border"),
@@ -76,143 +105,195 @@ function chartColors(): ChartColors {
   };
 }
 
-/** Easy Runs and Long Runs are told apart by marker shape and line style, so color stays free for GAP against HR. */
+/** Easy Runs and Long Runs are told apart by marker shape and line style. */
 const RUN_TYPE_STYLE: Record<EasyRunType, { symbol: string; line: "solid" | "dashed" }> = {
   "Easy Run": { symbol: "circle", line: "solid" },
   "Long Run": { symbol: "diamond", line: "dashed" },
 };
 
 const DAY_MS = 86_400_000;
-const time = (r: EasyTrendRun) => Date.parse(`${r.date}T00:00:00`);
-
-/** What both Easy charts share: the legend, a per-run tooltip and a time axis spanning the runs. */
-function baseOption(runs: EasyTrendRun[], c: ChartColors) {
-  const byId = new Map(runs.map((r) => [r.activityId, r]));
-  const times = runs.map(time);
-  return {
-    animation: false,
-    textStyle: { fontFamily: "system-ui, sans-serif" },
-    legend: { top: 0, left: 0, selectedMode: false, textStyle: { color: c.muted }, itemWidth: 22 },
-    tooltip: {
-      trigger: "item",
-      backgroundColor: c.surface,
-      borderColor: c.grid,
-      textStyle: { color: c.text },
-      formatter: (params: { data: { id: string } }) => runTooltip(byId.get(params.data.id)),
-    },
-    xAxis: {
-      type: "time",
-      min: Math.min(...times) - DAY_MS,
-      max: Math.max(...times) + DAY_MS,
-      minInterval: DAY_MS,
-      axisLabel: {
-        ...axisLabel(c),
-        hideOverlap: true,
-        formatter: (v: number) => formatDate(new Date(v).toLocaleDateString("en-CA")),
-      },
-      axisLine: { lineStyle: { color: c.grid } },
-      axisTick: { show: false },
-      splitLine: { show: false },
-    },
-  };
-}
-
-const axisLabel = (c: ChartColors) => ({ color: c.muted, fontSize: 11 });
+const time = (date: string) => Date.parse(`${date}T00:00:00`);
 
 /** The Run Types among `runs`, in legend order. */
 const runTypesIn = (runs: EasyTrendRun[]) =>
   (Object.keys(RUN_TYPE_STYLE) as EasyRunType[]).filter((t) => runs.some((r) => r.runType === t));
 
-/** One line of `runType`'s runs that have a `value`; each point keeps its run's id for the tooltip. */
-function runLine(
-  runs: EasyTrendRun[],
-  runType: EasyRunType,
-  c: ChartColors,
-  line: { name: string; color: string; value: (r: EasyTrendRun) => number | null; yAxisIndex?: number },
-) {
-  return {
-    name: line.name,
-    type: "line",
-    yAxisIndex: line.yAxisIndex ?? 0,
-    data: runs
-      .filter((r) => r.runType === runType && line.value(r) !== null)
-      .map((r) => ({ value: [time(r), line.value(r)], id: r.activityId })),
-    color: line.color,
-    symbol: RUN_TYPE_STYLE[runType].symbol,
-    symbolSize: runType === "Long Run" ? 11 : 8,
-    itemStyle: { borderColor: c.surface, borderWidth: 1 },
-    lineStyle: { width: 2, type: RUN_TYPE_STYLE[runType].line },
-    emphasis: { disabled: true },
-  };
-}
+/**
+ * Easy Pace on top, faster upward, with one line per Run Type through the runs that count, Grey Zone Runs as hollow
+ * markers off the line, and each trend line; minutes walked per run below on the same time axis.
+ */
+function chartOption(easy: EasyTrend, c: ChartColors): echarts.EChartsCoreOption {
+  const { runs, trends, referenceHr } = easy;
+  const byId = new Map(runs.map((r) => [r.activityId, r]));
+  const times = runs.map((r) => time(r.date));
+  const axisLabel = { color: c.muted, fontSize: 11 };
+  const axisName = { color: c.muted, fontSize: 11, align: "left" as const, padding: [0, 0, 0, -40] };
+  const symbolSize = (t: EasyRunType) => (t === "Long Run" ? 11 : 8);
+  const pace = (r: EasyTrendRun) => secondsPerMile(r.easyPace!);
+  /** A run's point, ringed in red when the run was Over Target. */
+  const point = (r: EasyTrendRun) => ({
+    value: [time(r.date), pace(r)],
+    id: r.activityId,
+    ...(r.overTarget && { itemStyle: { borderColor: c.overTarget, borderWidth: 3 } }),
+  });
+  const xAxis = (grid: number) => ({
+    type: "time",
+    gridIndex: grid,
+    min: Math.min(...times) - DAY_MS,
+    max: Math.max(...times) + DAY_MS,
+    minInterval: DAY_MS,
+    axisLabel: {
+      ...axisLabel,
+      show: grid === 1,
+      hideOverlap: true,
+      formatter: (v: number) => formatDate(new Date(v).toLocaleDateString("en-CA")),
+    },
+    axisLine: { lineStyle: { color: c.grid } },
+    axisTick: { show: false },
+    splitLine: { show: false },
+  });
+  const types = runTypesIn(runs);
+  const hasWalkTime = runs.some((r) => r.walkBreakTime !== null);
+  const hasOverTarget = runs.some((r) => r.overTarget && !r.greyZone);
+  const hasGreyZone = runs.some((r) => r.greyZone && r.easyPace !== null);
 
-function chartOption(runs: EasyTrendRun[], c: ChartColors): echarts.EChartsCoreOption {
-  const axisName = { color: c.muted, fontSize: 11 };
-  const gap = (r: EasyTrendRun) => (r.easyGap === null ? null : secondsPerMile(r.easyGap));
   return {
-    ...baseOption(runs, c),
-    grid: { left: 48, right: 48, top: 64, bottom: 28 },
+    animation: false,
+    textStyle: { fontFamily: "system-ui, sans-serif" },
+    legend: {
+      top: 0,
+      left: 0,
+      data: [...types, "Trend", ...(hasOverTarget ? ["Over Target"] : []), ...(hasGreyZone ? ["Grey Zone Run"] : [])],
+      selectedMode: false,
+      textStyle: { color: c.muted },
+      itemWidth: 22,
+    },
+    tooltip: {
+      trigger: "item",
+      backgroundColor: c.surface,
+      borderColor: c.grid,
+      textStyle: { color: c.text },
+      formatter: (params: { data: { id?: string } }) => runTooltip(params.data.id ? byId.get(params.data.id) : undefined),
+    },
+    grid: [
+      { left: 48, right: 16, top: 64, bottom: hasWalkTime ? 140 : 28 },
+      { left: 48, right: 16, height: hasWalkTime ? 64 : 0, bottom: 28 },
+    ],
+    xAxis: [xAxis(0), xAxis(1)],
     yAxis: [
       {
         type: "value",
-        name: "Easy GAP /mi",
-        nameTextStyle: { ...axisName, align: "left" as const, padding: [0, 0, 0, -40] },
+        name: `Easy Pace at ${formatHr(referenceHr!)}`,
+        nameTextStyle: axisName,
         // Faster paces are smaller numbers; inverting puts improvement upward, as on the Rep GAP charts.
         inverse: true,
         nameLocation: "start",
         scale: true,
         minInterval: 1,
-        axisLabel: { ...axisLabel(c), formatter: (v: number) => formatDuration(v) },
+        axisLabel: { ...axisLabel, formatter: (v: number) => formatDuration(v) },
         splitLine: { lineStyle: { color: c.grid } },
         splitNumber: 4,
       },
       {
         type: "value",
-        name: "Easy HR bpm",
-        nameTextStyle: { ...axisName, align: "right" as const, padding: [0, -40, 0, 0] },
-        position: "right",
-        scale: true,
+        gridIndex: 1,
+        show: hasWalkTime,
+        name: "Walked min",
+        nameTextStyle: axisName,
         minInterval: 1,
-        axisLabel: axisLabel(c),
-        splitLine: { show: false },
-        splitNumber: 4,
+        axisLabel,
+        splitLine: { lineStyle: { color: c.grid } },
+        splitNumber: 2,
       },
     ],
-    series: runTypesIn(runs).flatMap((t) => [
-      runLine(runs, t, c, { name: `${t} GAP`, color: c.gap, value: gap }),
-      runLine(runs, t, c, { name: `${t} HR`, color: c.hr, value: (r) => r.easyHr, yAxisIndex: 1 }),
-    ]),
-  };
-}
-
-/** Easy Efficiency over time; Easy Runs and Long Runs told apart as on the Easy GAP / Easy HR chart. */
-function efficiencyOption(runs: EasyTrendRun[], c: ChartColors): echarts.EChartsCoreOption {
-  return {
-    ...baseOption(runs, c),
-    grid: { left: 48, right: 48, top: 48, bottom: 28 },
-    yAxis: {
-      type: "value",
-      name: "Easy Efficiency m/beat",
-      nameTextStyle: { color: c.muted, fontSize: 11, align: "left" as const, padding: [0, 0, 0, -40] },
-      scale: true,
-      axisLabel: { ...axisLabel(c), formatter: (v: number) => v.toFixed(2) },
-      splitLine: { lineStyle: { color: c.grid } },
-      splitNumber: 4,
-    },
-    series: runTypesIn(runs).map((t) =>
-      runLine(runs, t, c, { name: `${t} Efficiency`, color: c.efficiency, value: (r) => r.easyEfficiency }),
-    ),
+    series: [
+      ...types.flatMap((t) => {
+        const ofType = runs.filter((r) => r.runType === t && r.easyPace !== null);
+        const style = RUN_TYPE_STYLE[t];
+        const line = trends[t].line;
+        return [
+          {
+            name: t,
+            type: "line",
+            data: ofType.filter((r) => !r.greyZone).map(point),
+            color: c.pace,
+            symbol: style.symbol,
+            symbolSize: symbolSize(t),
+            itemStyle: { borderColor: c.surface, borderWidth: 1 },
+            lineStyle: { width: 2, type: style.line },
+            emphasis: { disabled: true },
+          },
+          {
+            name: "Grey Zone Run",
+            type: "scatter",
+            data: ofType.filter((r) => r.greyZone).map((r) => ({ value: [time(r.date), pace(r)], id: r.activityId })),
+            symbol: style.symbol,
+            symbolSize: symbolSize(t),
+            itemStyle: { color: c.surface, borderColor: c.pace, borderWidth: 2 },
+            emphasis: { disabled: true },
+          },
+          {
+            name: "Trend",
+            type: "line",
+            data:
+              line === null
+                ? []
+                : [
+                    [time(trends[t].from), secondsPerMile(line.start)],
+                    [time(trends[t].to), secondsPerMile(line.end)],
+                  ],
+            color: c.trend,
+            symbol: "none",
+            silent: true,
+            lineStyle: { width: 2, type: style.line },
+            tooltip: { show: false },
+          },
+        ];
+      }),
+      /** No points of its own: it puts the red ring that marks Over Target runs in the legend. */
+      {
+        name: "Over Target",
+        type: "scatter",
+        data: [],
+        symbolSize: 9,
+        itemStyle: { color: c.surface, borderColor: c.overTarget, borderWidth: 2 },
+      },
+      {
+        name: "Walked",
+        type: "bar",
+        xAxisIndex: 1,
+        yAxisIndex: 1,
+        data: runs.filter((r) => r.walkBreakTime !== null).map((r) => ({ value: [time(r.date), r.walkBreakTime! / 60], id: r.activityId })),
+        color: c.walk,
+        barMaxWidth: 6,
+        emphasis: { disabled: true },
+      },
+    ],
   };
 }
 
 function runTooltip(r: EasyTrendRun | undefined): string {
   if (!r) return "";
   const lines = [`<strong>${formatDate(r.date)}</strong> · ${r.runType}`, escapeHtml(r.name)];
+  if (r.easyPace !== null) lines.push(`Easy Pace ${formatPace(r.easyPace)}`);
   if (r.easyGap !== null) lines.push(`Easy GAP ${formatPace(r.easyGap)}`);
   if (r.easyHr !== null) lines.push(`Easy HR ${formatHr(r.easyHr)}`);
-  if (r.easyEfficiency !== null) lines.push(`Easy Efficiency ${r.easyEfficiency.toFixed(2)} m/beat`);
+  if (r.walkBreakTime !== null) lines.push(`walked ${formatDuration(r.walkBreakTime)}`);
+  lines.push(hrCheck(r));
   return lines.join("<br>");
 }
+
+/** How the run went against its Easy HR Target, e.g. "Grey Zone Run: 31% above 141 bpm, not in the trend". */
+function hrCheck(r: EasyTrendRun): string {
+  if (r.easyHrTargetTop === null) return "HR check not possible: no Max HR or Easy HR Target";
+  if (r.timeAboveTarget === null) return "HR check not possible: no heart-rate stream";
+  const above = `${timeAbove(r.timeAboveTarget)} above ${formatHr(r.easyHrTargetTop)}`;
+  if (r.greyZone) return `<span class="over-target">Grey Zone Run: ${above}, not in the trend</span>`;
+  if (r.overTarget) return `<span class="over-target">Over Target: ${above}</span>`;
+  return above;
+}
+
+const timeAbove = (share: number) => `${Math.round(share * 100)}%`;
 
 function EasyTable({ runs }: { runs: EasyTrendRun[] }) {
   return (
@@ -223,9 +304,11 @@ function EasyTable({ runs }: { runs: EasyTrendRun[] }) {
           <tr>
             <th>Date</th>
             <th>Run Type</th>
+            <th>Easy Pace</th>
             <th>Easy GAP</th>
             <th>Easy HR</th>
-            <th>Easy Efficiency</th>
+            <th>Walked</th>
+            <th>Above target</th>
           </tr>
         </thead>
         <tbody>
@@ -233,9 +316,18 @@ function EasyTable({ runs }: { runs: EasyTrendRun[] }) {
             <tr key={r.activityId}>
               <td>{formatDate(r.date)}</td>
               <td>{r.runType}</td>
+              <td>{r.easyPace === null ? "–" : formatPace(r.easyPace)}</td>
               <td>{r.easyGap === null ? "–" : formatPace(r.easyGap)}</td>
               <td>{r.easyHr === null ? "–" : formatHr(r.easyHr)}</td>
-              <td>{r.easyEfficiency === null ? "–" : `${r.easyEfficiency.toFixed(2)} m/beat`}</td>
+              <td>{r.walkBreakTime === null ? "–" : formatDuration(r.walkBreakTime)}</td>
+              <td>
+                {r.timeAboveTarget === null ? "–" : timeAbove(r.timeAboveTarget)}
+                {r.greyZone ? (
+                  <span className="over-target"> Grey Zone Run</span>
+                ) : (
+                  r.overTarget && <span className="over-target"> Over Target</span>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>

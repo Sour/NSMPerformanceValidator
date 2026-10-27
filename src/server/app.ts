@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { easyTrend, type EasyTrendRun } from "../domain/easyTrend";
+import { easyTrend, type EasyTrend } from "../domain/easyTrend";
 import {
   repLengthCards,
   type AnalysedActivity,
@@ -19,12 +19,12 @@ import {
 } from "../domain/trainingWeek";
 import { weeklyVolume, type VolumeWeek } from "../domain/weeklyVolume";
 import type { Db } from "./db";
-import { activityAverages, detectedIntervals, intervalsAnalyzedAt, plannedRecovery } from "./intervals";
-import { loadActivities, loadPlannedWorkouts, loadRunThresholdPace, loadSyncStatus, type StoredActivity } from "./store";
+import { activityAverages, activityStreams, detectedIntervals, intervalsAnalyzedAt, plannedEasyHrTarget, plannedRecovery } from "./intervals";
+import { loadActivities, loadPlannedWorkouts, loadAthleteSettings, loadSyncStatus, type StoredActivity } from "./store";
 import type { RefetchOutcome } from "./sync";
 import type { SyncRunner } from "./syncRunner";
 
-export type WeekActivity = Omit<StoredActivity, "raw" | "intervals">;
+export type WeekActivity = Omit<StoredActivity, "raw" | "intervals" | "streams">;
 /** A Matched Quality Run is Complete or Incomplete; null for other Planned Workouts. */
 export type WeekWorkoutResponse = WeekWorkout<WeekActivity> & { completion: "Complete" | "Incomplete" | null };
 /** The Training Week asked for, and through `earliest` and `latest` how far back and forward weeks may be asked for. */
@@ -42,10 +42,7 @@ export interface VolumeResponse {
   /** Oldest first; the last is this Training Week. */
   weeks: VolumeWeek[];
 }
-export interface EasyResponse {
-  /** Oldest first. */
-  runs: EasyTrendRun[];
-}
+export type EasyResponse = EasyTrend;
 export interface ThresholdsResponse extends ThresholdPaces {
   /** The intervals.icu Threshold Pace in metres per second, a reference beside LT2 Pace; null when none is synced. */
   icuThresholdPace: number | null;
@@ -117,16 +114,16 @@ export function createApp(
     })
     .get("/api/volume", (c) => {
       const planned = loadPlannedWorkouts(db).map(({ raw: _, ...p }) => p);
-      const activities = loadActivities(db).map(({ raw: _, intervals: __, ...a }) => a);
+      const activities = loadActivities(db).map(({ raw: _, intervals: __, streams: ___, ...a }) => a);
       return c.json<VolumeResponse>({ weeks: weeklyVolume(today(), planned, activities) });
     })
-    .get("/api/easy", (c) => c.json<EasyResponse>({ runs: easyRuns(db) }))
+    .get("/api/easy", (c) => c.json<EasyResponse>(easyRuns(db, today())))
     .get("/api/thresholds", (c) => {
       const analysedPlanned = analysedPlannedWorkouts(db);
       const runs = qualityRuns(analysedPlanned, analysedActivities(db));
       return c.json<ThresholdsResponse>({
-        ...thresholdPaces(analysedPlanned, runs, easyRuns(db), today(), settings.lt1Hr),
-        icuThresholdPace: loadRunThresholdPace(db),
+        ...thresholdPaces(analysedPlanned, runs, easyRuns(db, today()).runs, today(), settings.lt1Hr),
+        icuThresholdPace: loadAthleteSettings(db).runThresholdPace,
       });
     })
     .post("/api/activities/:id/refetch", async (c) => {
@@ -152,11 +149,15 @@ function qualityRuns(planned: AnalysedPlannedWorkout[], activities: AnalysedActi
   return repLengthCards(planned, activities).flatMap((card) => card.runs);
 }
 
-/** Every Matched Easy Run and Long Run with its Easy GAP and Easy HR, oldest first. */
-function easyRuns(db: Db): EasyTrendRun[] {
-  const planned = loadPlannedWorkouts(db).map(({ raw: _, ...p }) => p);
-  const activities = loadActivities(db).map(({ raw, intervals: _, ...a }) => ({ ...a, ...activityAverages(raw) }));
-  return easyTrend(planned, activities);
+/** Every Matched Easy Run and Long Run with its Easy GAP, Easy HR and Easy Pace, oldest first. */
+function easyRuns(db: Db, today: string): EasyTrend {
+  const planned = loadPlannedWorkouts(db).map(({ raw, ...p }) => ({ ...p, easyHrTarget: plannedEasyHrTarget(raw) }));
+  const activities = loadActivities(db).map(({ raw, intervals: _, streams, ...a }) => ({
+    ...a,
+    ...activityAverages(raw),
+    streams: activityStreams(streams),
+  }));
+  return easyTrend(planned, activities, today, loadAthleteSettings(db).maxHr);
 }
 
 /** Stored Planned Workouts without their raw response, with their planned recovery read. */
@@ -166,7 +167,7 @@ function analysedPlannedWorkouts(db: Db): AnalysedPlannedWorkout[] {
 
 /** Stored Activities without their raw response, with their detected intervals and when they last changed read. */
 function analysedActivities(db: Db): (AnalysedActivity & Pick<StoredActivity, "distance">)[] {
-  return loadActivities(db).map(({ raw: _, intervals, ...a }) => ({
+  return loadActivities(db).map(({ raw: _, intervals, streams: __, ...a }) => ({
     ...a,
     intervals: intervals === null ? null : detectedIntervals(intervals),
     intervalsChangedAt: intervalsAnalyzedAt(intervals),

@@ -9,8 +9,9 @@ import {
   type VolumeResponse,
   type WeekResponse,
 } from "./app";
+import { secondsPerMile } from "../domain/pace";
 import { openDb } from "./db";
-import { deleteActivity, saveActivity, saveRunThresholdPace, saveSync } from "./store";
+import { deleteActivity, saveActivity, saveAthleteSettings, saveSync } from "./store";
 import type { SyncRunner } from "./syncRunner";
 
 describe("/api/sync", () => {
@@ -100,6 +101,7 @@ describe("Quality Runs", () => {
       expect(workout.completion).toBe(completion);
       expect(workout.activity).not.toHaveProperty("raw");
       expect(workout.activity).not.toHaveProperty("intervals");
+      expect(workout.activity).not.toHaveProperty("streams");
     }
   });
 
@@ -154,7 +156,7 @@ describe("Quality Runs", () => {
     const refetched: string[] = [];
     const app = createApp(db, () => "2026-10-23", idleRunner(), undefined, async (id) => {
       refetched.push(id);
-      saveActivity(db, activity, fixed, "2026-11-20T10:00:00.000Z");
+      saveActivity(db, activity, { intervals: fixed, streams: null }, "2026-11-20T10:00:00.000Z");
       return "Updated";
     });
 
@@ -238,47 +240,217 @@ describe("/api/volume", () => {
 });
 
 describe("/api/easy", () => {
-  it("has the Easy GAP and Easy HR intervals.icu recorded for each Matched Easy Run and Long Run", async () => {
+  /** An Easy Run's or Long Run's structure: one step at `low`–`high`% of Max HR. */
+  const easyHrTarget = (low: number, high: number) => ({ steps: [{ hr: { start: low, end: high, units: "%hr", target: "1s" }, duration: 2820 }] });
+  const event = (id: number, date: string, name: string, workout_doc: unknown = easyHrTarget(62, 70)) => ({
+    id,
+    start_date_local: `${date}T00:00:00`,
+    category: "WORKOUT",
+    type: "Run",
+    name,
+    description: "[NSM]",
+    paired_activity_id: null,
+    workout_doc,
+  });
+  const activity = (id: string, date: string, recorded: { gap?: number; average_heartrate?: number }) => ({
+    id,
+    start_date_local: `${date}T07:00:00`,
+    type: "Run",
+    name: "Everett Running",
+    moving_time: 2400,
+    distance: 8000,
+    paired_event_id: null,
+    ...recorded,
+  });
+
+  /** A streams response sampled once a second: each stretch is `seconds` at a heart rate and a cadence (per foot). */
+  function streams(...stretches: [seconds: number, hr: number, cadence: number][]) {
+    const samples = stretches.flatMap(([seconds, hr, cadence]) => Array.from({ length: seconds }, () => [hr, cadence] as const));
+    return [
+      { type: "time", data: samples.map((_, i) => i) },
+      { type: "heartrate", data: samples.map(([hr]) => hr) },
+      { type: "cadence", data: samples.map(([, cadence]) => cadence) },
+    ];
+  }
+
+  /** Synced Planned Workouts and Activities, with streams by Activity id, and the athlete's Max HR, read on `today`. */
+  async function easy(
+    events: ReturnType<typeof event>[],
+    activities: ReturnType<typeof activity>[],
+    { maxHr = 200 as number | null, today = "2026-10-24", streamsById = new Map<string, unknown>() } = {},
+  ): Promise<EasyResponse> {
     const db = openDb(":memory:");
-    const event = (id: number, date: string, name: string) => ({
-      id,
-      start_date_local: `${date}T00:00:00`,
-      category: "WORKOUT",
-      type: "Run",
-      name,
-      description: "[NSM]",
-      paired_activity_id: null,
-    });
-    const activity = (id: string, date: string, recorded: { gap?: number; average_heartrate?: number }) => ({
-      id,
-      start_date_local: `${date}T07:00:00`,
-      type: "Run",
-      name: "Everett Running",
-      moving_time: 2400,
-      distance: 8000,
-      paired_event_id: null,
-      ...recorded,
-    });
     saveSync(
       db,
-      { from: "2026-10-01", to: "2026-10-30" },
-      [event(1, "2026-10-20", "Easy Run"), event(2, "2026-10-24", "Long Run")],
+      { from: "2026-01-01", to: "2026-12-31" },
+      events,
+      activities,
+      new Map(),
+      { finishedAt: "2026-10-23T12:00:00.000Z", syncedThrough: today },
+      streamsById,
+    );
+    saveAthleteSettings(db, { runThresholdPace: null, maxHr });
+    const app = createApp(db, () => today, idleRunner());
+    return (await (await app.request("/api/easy")).json()) as EasyResponse;
+  }
+
+  it("gives each Matched Easy Run and Long Run its Easy Pace at the middle of the current Easy HR Target", async () => {
+    const { referenceHr, runs } = await easy(
       [
-        activity("easy", "2026-10-20", { gap: 2.36, average_heartrate: 139 }),
+        event(1, "2026-10-13", "Easy Run", easyHrTarget(60, 68)),
+        event(2, "2026-10-20", "Easy Run"),
+        event(3, "2026-10-24", "Long Run"),
+        event(4, "2026-10-29", "Easy Run", easyHrTarget(70, 80)),
+      ],
+      [
+        activity("old", "2026-10-13", { gap: 2.3, average_heartrate: 115 }),
+        activity("easy", "2026-10-20", { gap: 2.4, average_heartrate: 144 }),
         activity("long", "2026-10-24", { gap: 2.2 }),
         activity("extra", "2026-10-22", { gap: 2.0, average_heartrate: 122 }),
       ],
-      new Map(),
-      { finishedAt: "2026-10-23T12:00:00.000Z", syncedThrough: "2026-10-24" },
     );
-    const app = createApp(db, () => "2026-10-24", idleRunner());
 
-    const { runs } = (await (await app.request("/api/easy")).json()) as EasyResponse;
-
+    // The latest target on or before today is 62–70% of a 200 bpm Max HR: 132 bpm in the middle.
+    expect(referenceHr).toBe(132);
     expect(runs.map((r) => [r.activityId, r.runType, r.easyGap, r.easyHr])).toEqual([
-      ["easy", "Easy Run", 2.36, 139],
+      ["old", "Easy Run", 2.3, 115],
+      ["easy", "Easy Run", 2.4, 144],
       ["long", "Long Run", 2.2, null],
     ]);
+    // 2.3 m/s × 132 / 115 and 2.4 m/s × 132 / 144; a run without Easy HR has no Easy Pace.
+    expect(runs.map((r) => r.easyPace)).toEqual([expect.closeTo(2.64, 10), expect.closeTo(2.2, 10), null]);
+  });
+
+  it("has no Easy Pace without Max HR or an Easy HR Target", async () => {
+    const run = [activity("easy", "2026-10-20", { gap: 2.4, average_heartrate: 144 })];
+    const noMaxHr = await easy([event(1, "2026-10-20", "Easy Run")], run, { maxHr: null });
+    const noTarget = await easy([event(1, "2026-10-20", "Easy Run", null)], run);
+    for (const { referenceHr, runs } of [noMaxHr, noTarget]) {
+      expect(referenceHr).toBeNull();
+      expect(runs.map((r) => [r.activityId, r.easyPace])).toEqual([["easy", null]]);
+    }
+  });
+
+  it("has each Run Type's Easy Pace trend over the last 6 Training Weeks, or Not enough data with fewer than 3 runs", async () => {
+    // At Easy HR 132 bpm, the reference HR, Easy Pace is Easy GAP.
+    const at = (secondsPerMile: number) => ({ gap: 1609.344 / secondsPerMile, average_heartrate: 132 });
+    const { trends } = await easy(
+      [
+        event(1, "2026-08-03", "Easy Run"),
+        event(2, "2026-09-14", "Easy Run"),
+        event(3, "2026-09-28", "Easy Run"),
+        event(4, "2026-10-19", "Easy Run"),
+        event(5, "2026-09-20", "Long Run"),
+        event(6, "2026-10-18", "Long Run"),
+      ],
+      [
+        activity("before", "2026-08-03", at(700)),
+        activity("e1", "2026-09-14", at(600)),
+        activity("e2", "2026-09-28", at(596)),
+        activity("e3", "2026-10-19", at(590)),
+        activity("l1", "2026-09-20", at(640)),
+        activity("l2", "2026-10-18", at(630)),
+      ],
+    );
+
+    // Today is Saturday 24 Oct, so the window runs from Monday 14 Sep. The line loses 10 s/mi every 35 days.
+    const easyTrend = trends["Easy Run"];
+    expect(easyTrend).toMatchObject({ from: "2026-09-14", to: "2026-10-24" });
+    expect(secondsPerMile(easyTrend.line!.start)).toBeCloseTo(600, 6);
+    expect(secondsPerMile(easyTrend.line!.end)).toBeCloseTo(600 - (10 * 40) / 35, 6);
+    expect(trends["Long Run"]).toEqual({ from: "2026-09-14", to: "2026-10-24", line: null, greyZoneRuns: 0 });
+  });
+
+  it("gives each run its Walk Break time: stretches of at least 15 seconds below 130 steps/min, stops left out", async () => {
+    const { runs } = await easy(
+      [event(1, "2026-10-20", "Easy Run"), event(2, "2026-10-24", "Long Run")],
+      [
+        activity("easy", "2026-10-20", { gap: 2.4, average_heartrate: 132 }),
+        activity("long", "2026-10-24", { gap: 2.3, average_heartrate: 132 }),
+      ],
+      {
+        // intervals.icu gives cadence per foot: 80 is running at 160 steps/min, 60 walking at 120.
+        streamsById: new Map([
+          ["easy", streams([600, 132, 80], [20, 125, 60], [300, 132, 80], [14, 125, 60], [100, 132, 80], [30, 120, 0], [40, 130, 64])],
+        ]),
+      },
+    );
+
+    // 20 s and 40 s walked; 14 s is too short to be a Walk Break, and a stop (cadence 0) is not one.
+    expect(runs.map((r) => [r.activityId, r.walkBreakTime])).toEqual([
+      ["easy", 60],
+      ["long", null],
+    ]);
+    expect(runs[1]!.easyPace).toBeCloseTo(2.3, 10);
+  });
+
+  it("does not join walking either side of a pause in recording into one Walk Break", async () => {
+    // 100 s running, 10 s walking, a pause, then 10 s more walking.
+    const time = [...Array.from({ length: 110 }, (_, i) => i), ...Array.from({ length: 10 }, (_, i) => 200 + i)];
+    const cadence = time.map((_, i) => (i < 100 ? 80 : 60));
+    const { runs } = await easy([event(1, "2026-10-20", "Easy Run")], [activity("easy", "2026-10-20", { gap: 2.4, average_heartrate: 132 })], {
+      streamsById: new Map([["easy", [{ type: "time", data: time }, { type: "cadence", data: cadence }]]]),
+    });
+    expect(runs[0]!.walkBreakTime).toBe(0);
+  });
+
+  it("flags runs by their share of moving time above the top of the Easy HR Target", async () => {
+    const { runs } = await easy(
+      [event(1, "2026-10-19", "Easy Run"), event(2, "2026-10-20", "Easy Run"), event(3, "2026-10-21", "Easy Run"), event(4, "2026-10-24", "Long Run")],
+      [
+        activity("steady", "2026-10-19", { gap: 2.4, average_heartrate: 132 }),
+        activity("over", "2026-10-20", { gap: 2.4, average_heartrate: 134 }),
+        activity("grey", "2026-10-21", { gap: 2.5, average_heartrate: 138 }),
+        activity("no-streams", "2026-10-24", { gap: 2.3, average_heartrate: 132 }),
+      ],
+      {
+        // The top of 62–70% of a 200 bpm Max HR is 140 bpm. A stop (cadence 0) is not moving time.
+        streamsById: new Map([
+          ["steady", streams([90, 135, 80], [10, 141, 80])],
+          ["over", streams([85, 135, 80], [15, 145, 80], [60, 150, 0])],
+          ["grey", streams([70, 135, 60], [30, 145, 80])],
+        ]),
+      },
+    );
+
+    expect(runs.map((r) => [r.activityId, r.easyHrTargetTop, r.timeAboveTarget, r.overTarget, r.greyZone])).toEqual([
+      ["steady", 140, expect.closeTo(0.1, 10), false, false],
+      ["over", 140, expect.closeTo(0.15, 10), true, false],
+      ["grey", 140, expect.closeTo(0.3, 10), true, true],
+      ["no-streams", 140, null, false, false],
+    ]);
+  });
+
+  it("leaves Grey Zone Runs out of the trend, and counts them in the window", async () => {
+    const at = (secondsPerMile: number) => ({ gap: 1609.344 / secondsPerMile, average_heartrate: 132 });
+    const { runs, trends } = await easy(
+      [
+        event(1, "2026-09-07", "Easy Run"),
+        event(2, "2026-09-14", "Easy Run"),
+        event(3, "2026-09-28", "Easy Run"),
+        event(4, "2026-10-05", "Easy Run"),
+        event(5, "2026-10-19", "Easy Run"),
+      ],
+      [
+        activity("grey-before", "2026-09-07", at(560)),
+        activity("e1", "2026-09-14", at(600)),
+        activity("e2", "2026-09-28", at(596)),
+        activity("grey", "2026-10-05", at(560)),
+        activity("e3", "2026-10-19", at(590)),
+      ],
+      {
+        streamsById: new Map([
+          ["grey-before", streams([60, 135, 80], [40, 150, 80])],
+          ["grey", streams([60, 135, 80], [40, 150, 80])],
+        ]),
+      },
+    );
+
+    expect(runs.find((r) => r.activityId === "grey")!.easyPace).not.toBeNull();
+    const trend = trends["Easy Run"];
+    expect(trend.greyZoneRuns).toBe(1);
+    expect(secondsPerMile(trend.line!.start)).toBeCloseTo(600, 6);
+    expect(secondsPerMile(trend.line!.end)).toBeCloseTo(600 - (10 * 40) / 35, 6);
   });
 });
 
@@ -370,7 +542,7 @@ describe("/api/thresholds", () => {
     const before = (await (await app.request("/api/thresholds")).json()) as ThresholdsResponse;
     expect(before.icuThresholdPace).toBeNull();
 
-    saveRunThresholdPace(db, 3.0);
+    saveAthleteSettings(db, { runThresholdPace: 3.0, maxHr: null });
     const after = (await (await app.request("/api/thresholds")).json()) as ThresholdsResponse;
     expect(after.icuThresholdPace).toBe(3.0);
     expect(after.lt2Pace).toBeCloseTo(3.117, 3);

@@ -1,8 +1,8 @@
 import { addDays, localDate } from "../domain/localDate";
 import { isRun, matchActivities, type Activity, type PlannedWorkout } from "../domain/matching";
-import { runType } from "../domain/runType";
+import { runType, type RunType } from "../domain/runType";
 import type { Db } from "./db";
-import { runThresholdPace, toActivity, toPlannedWorkout, type IntervalsClient } from "./intervals";
+import { runMaxHr, runThresholdPace, toActivity, toPlannedWorkout, type IntervalsClient } from "./intervals";
 import {
   deleteActivity,
   loadActivities,
@@ -10,7 +10,8 @@ import {
   loadSyncStatus,
   recordSyncWithNothingToStore,
   saveActivity,
-  saveRunThresholdPace,
+  saveAthleteSettings,
+  saveStreams,
   saveSync,
 } from "./store";
 
@@ -60,35 +61,58 @@ export async function sync(db: Db, client: IntervalsClient, today: string): Prom
   const planned = events.filter((e) => localDate(e.start_date_local) >= nsmStart);
   const runningActivities = (await client.activities(laterDate(from, nsmStart), addDays(today, 1))).filter(isRun);
 
+  const plannedWorkouts = planned.map(toPlannedWorkout);
+  const activitiesInWindow = runningActivities.map(toActivity);
   const intervals = new Map<string, unknown>();
-  for (const id of qualityRunActivityIds(planned.map(toPlannedWorkout), runningActivities.map(toActivity))) {
+  for (const id of matchedActivityIds(plannedWorkouts, activitiesInWindow, QUALITY_RUN_TYPES)) {
     intervals.set(id, await client.intervals(id));
   }
+  const streams = new Map<string, unknown>();
+  for (const id of matchedActivityIds(plannedWorkouts, activitiesInWindow, EASY_RUN_TYPES)) {
+    streams.set(id, await client.streams(id));
+  }
 
-  saveSync(db, { from, to }, planned, runningActivities, intervals, {
-    finishedAt: new Date().toISOString(),
-    syncedThrough: today,
-  });
-  await syncRunThresholdPace(db, client);
+  saveSync(
+    db,
+    { from, to },
+    planned,
+    runningActivities,
+    intervals,
+    { finishedAt: new Date().toISOString(), syncedThrough: today },
+    streams,
+  );
+  await backfillStreams(db, client);
+  await syncAthleteSettings(db, client);
   return { nsmStart, plannedWorkouts: planned.length, activities: runningActivities.length };
 }
 
+/** Fetches the streams of stored Easy Runs and Long Runs that have none, such as those stored before streams were. */
+async function backfillStreams(db: Db, client: IntervalsClient): Promise<void> {
+  const stored = loadActivities(db);
+  const missing = matchedActivityIds(loadPlannedWorkouts(db), stored, EASY_RUN_TYPES).filter(
+    (id) => stored.find((a) => a.id === id)!.streams === null,
+  );
+  for (const id of missing) saveStreams(db, id, await client.streams(id));
+}
+
 /**
- * Stores the intervals.icu Threshold Pace from the athlete's Run settings. It is only a reference beside LT2 Pace,
- * so a failed request clears it, hiding the comparison, rather than failing the sync.
+ * Stores the intervals.icu Threshold Pace and Max HR from the athlete's Run settings. The Threshold Pace is only a
+ * reference beside LT2 Pace, and without Max HR only Easy Pace goes, so a failed request clears them rather than
+ * failing the sync.
  */
-async function syncRunThresholdPace(db: Db, client: IntervalsClient): Promise<void> {
+async function syncAthleteSettings(db: Db, client: IntervalsClient): Promise<void> {
   const athlete = await client.athlete().catch(() => null);
-  saveRunThresholdPace(db, runThresholdPace(athlete));
+  saveAthleteSettings(db, { runThresholdPace: runThresholdPace(athlete), maxHr: runMaxHr(athlete) });
 }
 
 /** What a Re-fetch found: the Activity is still Matched to a Quality Run, is no longer, or is gone from intervals.icu. */
 export type RefetchOutcome = "Updated" | "NotQualityRun" | "Deleted";
 
 /**
- * Reloads one Activity, and its detected intervals while it is Matched to a Quality Run, from intervals.icu and stores
- * them as a sync would, whatever the Activity's age. Nothing else is fetched or changed. An Activity intervals.icu no
- * longer has, or that is no longer a running Activity, is removed. When a request fails, it rejects and stored data is unchanged.
+ * Reloads one Activity from intervals.icu, with its detected intervals while it is Matched to a Quality Run or its
+ * streams while it is Matched to an Easy Run or Long Run, and stores them as a sync would, whatever the Activity's age.
+ * Nothing else is fetched or changed. An Activity intervals.icu no longer has, or that is no longer a running Activity,
+ * is removed. When a request fails, it rejects and stored data is unchanged.
  */
 export async function refetchActivity(db: Db, client: IntervalsClient, activityId: string): Promise<RefetchOutcome> {
   const fetched = await client.activity(activityId);
@@ -96,17 +120,28 @@ export async function refetchActivity(db: Db, client: IntervalsClient, activityI
     deleteActivity(db, activityId);
     return fetched === null ? "Deleted" : "NotQualityRun";
   }
-  const others = loadActivities(db).filter((a) => a.id !== activityId);
-  const isQualityRun = qualityRunActivityIds(loadPlannedWorkouts(db), [...others, toActivity(fetched)]).includes(activityId);
+  const planned = loadPlannedWorkouts(db);
+  const candidates = [...loadActivities(db).filter((a) => a.id !== activityId), toActivity(fetched)];
+  const isQualityRun = matchedActivityIds(planned, candidates, QUALITY_RUN_TYPES).includes(activityId);
+  const isEasy = matchedActivityIds(planned, candidates, EASY_RUN_TYPES).includes(activityId);
   const intervals = isQualityRun ? await client.intervals(activityId) : null;
-  saveActivity(db, fetched, intervals, new Date().toISOString());
+  const streams = isEasy ? await client.streams(activityId) : null;
+  saveActivity(db, fetched, { intervals, streams }, new Date().toISOString());
   return isQualityRun ? "Updated" : "NotQualityRun";
 }
 
-/** The Activities Matched to a Quality Run, whose Reps are read from their detected intervals. */
-function qualityRunActivityIds(planned: PlannedWorkout[], runningActivities: Activity[]): string[] {
+/** Quality Runs' Reps are read from their detected intervals. */
+const QUALITY_RUN_TYPES: RunType[] = ["Quality Run"];
+/** Easy Runs' and Long Runs' Walk Breaks and time above the Easy HR Target are read from their streams. */
+const EASY_RUN_TYPES: RunType[] = ["Easy Run", "Long Run"];
+
+/** The Activities Matched to a Planned Workout of one of `runTypes`. */
+function matchedActivityIds(planned: PlannedWorkout[], runningActivities: Activity[], runTypes: RunType[]): string[] {
   return matchActivities(planned, runningActivities)
-    .filter((m) => runType(planned.find((p) => p.id === m.plannedWorkoutId)!.name) === "Quality Run")
+    .filter((m) => {
+      const type = runType(planned.find((p) => p.id === m.plannedWorkoutId)!.name);
+      return type !== null && runTypes.includes(type);
+    })
     .map((m) => m.activityId);
 }
 

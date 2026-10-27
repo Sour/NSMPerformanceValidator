@@ -5,8 +5,11 @@ import { activities, athleteSettings, plannedWorkouts, syncStatus } from "./db/s
 import { toActivity, toPlannedWorkout, type IntervalsActivity, type IntervalsEvent } from "./intervals";
 
 export type StoredPlannedWorkout = PlannedWorkout & { raw: unknown };
-/** `intervals` is intervals.icu's detected intervals response, or null when it was not fetched. */
-export type StoredActivity = Activity & { distance: number | null; raw: unknown; intervals: unknown };
+/**
+ * `intervals` is intervals.icu's detected intervals response and `streams` its streams response, each null when it
+ * was not fetched.
+ */
+export type StoredActivity = Activity & { distance: number | null; raw: unknown; intervals: unknown; streams: unknown };
 
 export type SyncStatus = Omit<typeof syncStatus.$inferSelect, "id">;
 
@@ -25,7 +28,8 @@ export interface SyncedData {
 /**
  * Makes the stored Planned Workouts and Activities dated within `window` exactly those given,
  * keyed by intervals.icu id, and records the sync as successful.
- * `intervals` holds the detected intervals responses fetched for some of the Activities, by Activity id.
+ * `intervals` and `streams` hold the detected intervals and streams responses fetched for some of the Activities,
+ * by Activity id.
  */
 export function saveSync(
   db: Db,
@@ -34,6 +38,7 @@ export function saveSync(
   runningActivities: IntervalsActivity[],
   intervals: ReadonlyMap<string, unknown>,
   { finishedAt, syncedThrough }: SyncedData,
+  streams: ReadonlyMap<string, unknown> = new Map(),
 ): void {
   db.transaction((tx) => {
     for (const e of events) {
@@ -49,7 +54,9 @@ export function saveSync(
       )
       .run();
 
-    for (const a of runningActivities) upsertActivity(tx, a, intervals.get(a.id) ?? null, finishedAt);
+    for (const a of runningActivities) {
+      upsertActivity(tx, a, { intervals: intervals.get(a.id) ?? null, streams: streams.get(a.id) ?? null }, finishedAt);
+    }
     tx.delete(activities)
       .where(
         and(
@@ -63,9 +70,14 @@ export function saveSync(
   });
 }
 
-/** Stores one running Activity with its detected intervals response (null when not fetched), as a sync would. */
-export function saveActivity(db: Db, activity: IntervalsActivity, intervals: unknown, syncedAt: string): void {
-  upsertActivity(db, activity, intervals, syncedAt);
+/** Stores one running Activity with what was fetched beside it, as a sync would. */
+export function saveActivity(db: Db, activity: IntervalsActivity, fetched: Fetched, syncedAt: string): void {
+  upsertActivity(db, activity, fetched, syncedAt);
+}
+
+/** Stores the streams response of one stored Activity, leaving the rest of it as it is. */
+export function saveStreams(db: Db, activityId: string, streams: unknown): void {
+  db.update(activities).set({ streams }).where(eq(activities.id, activityId)).run();
 }
 
 /** Removes one stored Activity; nothing happens when it is not stored. */
@@ -73,8 +85,14 @@ export function deleteActivity(db: Db, activityId: string): void {
   db.delete(activities).where(eq(activities.id, activityId)).run();
 }
 
-function upsertActivity(db: Pick<Db, "insert">, a: IntervalsActivity, intervals: unknown, syncedAt: string): void {
-  const row = { ...toActivity(a), distance: a.distance ?? null, raw: a, intervals, syncedAt };
+/** The detected intervals and streams responses fetched for an Activity; each null when not fetched. */
+export interface Fetched {
+  intervals: unknown;
+  streams: unknown;
+}
+
+function upsertActivity(db: Pick<Db, "insert">, a: IntervalsActivity, { intervals, streams }: Fetched, syncedAt: string): void {
+  const row = { ...toActivity(a), distance: a.distance ?? null, raw: a, intervals, streams, syncedAt };
   db.insert(activities).values(row).onConflictDoUpdate({ target: activities.id, set: row }).run();
 }
 
@@ -120,20 +138,28 @@ export function loadSyncStatus(db: Db): SyncStatus | null {
 
 const ATHLETE_SETTINGS_ID = 1;
 
-/** Records the intervals.icu Threshold Pace of the athlete's Run settings, in metres per second; null when none is set. */
-export function saveRunThresholdPace(db: Db, runThresholdPace: number | null): void {
-  const row = { id: ATHLETE_SETTINGS_ID, runThresholdPace };
+/** What the latest sync read from the athlete's intervals.icu Run settings; each null when none is set. */
+export interface AthleteSettings {
+  /** The intervals.icu Threshold Pace, in metres per second. */
+  runThresholdPace: number | null;
+  /** Max HR, in bpm. */
+  maxHr: number | null;
+}
+
+/** Records what the latest sync read from the athlete's intervals.icu Run settings. */
+export function saveAthleteSettings(db: Db, settings: AthleteSettings): void {
+  const row = { id: ATHLETE_SETTINGS_ID, ...settings };
   db.insert(athleteSettings).values(row).onConflictDoUpdate({ target: athleteSettings.id, set: row }).run();
 }
 
-/** The intervals.icu Threshold Pace last synced, in metres per second; null before it is synced or when none is set. */
-export function loadRunThresholdPace(db: Db): number | null {
+/** What the latest sync read from the athlete's intervals.icu Run settings; all null before the first sync. */
+export function loadAthleteSettings(db: Db): AthleteSettings {
   return (
     db
-      .select({ runThresholdPace: athleteSettings.runThresholdPace })
+      .select({ runThresholdPace: athleteSettings.runThresholdPace, maxHr: athleteSettings.maxHr })
       .from(athleteSettings)
       .where(eq(athleteSettings.id, ATHLETE_SETTINGS_ID))
-      .get()?.runThresholdPace ?? null
+      .get() ?? { runThresholdPace: null, maxHr: null }
   );
 }
 
@@ -163,6 +189,7 @@ export function loadActivities(db: Db): StoredActivity[] {
       pairedEventId: activities.pairedEventId,
       raw: activities.raw,
       intervals: activities.intervals,
+      streams: activities.streams,
     })
     .from(activities)
     .orderBy(asc(activities.date), asc(activities.id))

@@ -29,6 +29,13 @@
       "when": 1792813946600,
       "tag": "0003_athlete_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1793131799558,
+      "tag": "0004_easy_pace",
+      "breakpoints": true
     }
   ]
 }

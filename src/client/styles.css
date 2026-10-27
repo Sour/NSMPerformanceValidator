@@ -219,13 +219,20 @@ h2 {
   margin-top: 16px;
 }
 
-.easy-chart {
-  height: 280px;
+.easy-headlines {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+  margin-bottom: 8px;
 }
 
-.easy-chart.efficiency {
-  height: 200px;
-  margin-top: 12px;
+.easy-headline {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.easy-chart {
+  height: 360px;
 }
 
 .easy .runs {
