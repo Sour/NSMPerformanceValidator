@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>NSMPerformanceValidator</Name>
+  <Repository>ghcr.io/sour/nsmperformancevalidator:latest</Repository>
+  <Registry>https://github.com/Sour/NSMPerformanceValidator/pkgs/container/nsmperformancevalidator</Registry>
+  <Network>bridge</Network>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/Sour/NSMPerformanceValidator/issues</Support>
+  <Project>https://github.com/Sour/NSMPerformanceValidator</Project>
+  <Overview>Tracks progress on a Norwegian Singles Method training plan from intervals.icu data. Syncs Planned Workouts and running Activities into SQLite on start and every SYNC_INTERVAL. The app has no login, so keep it on the LAN.</Overview>
+  <Category>Tools: Other:</Category>
+  <WebUI>http://[IP]:[PORT:3000]/</WebUI>
+  <ExtraParams></ExtraParams>
+  <Config Name="WebUI Port" Target="3000" Default="3000" Mode="tcp" Description="Port the page and the API are served on." Type="Port" Display="always" Required="true" Mask="false">3000</Config>
+  <Config Name="Data" Target="/data" Default="/mnt/user/appdata/nsm" Mode="rw" Description="Holds the SQLite database (nsm.db)." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/nsm</Config>
+  <Config Name="intervals.icu Athlete ID" Target="INTERVALS_ATHLETE_ID" Default="" Mode="" Description="Your intervals.icu athlete ID, e.g. i12345 (Settings → Developer Settings)." Type="Variable" Display="always" Required="true" Mask="false"></Config>
+  <Config Name="intervals.icu API Key" Target="INTERVALS_API_KEY" Default="" Mode="" Description="Your intervals.icu API key (Settings → Developer Settings). Only the server reads it." Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="Sync Interval" Target="SYNC_INTERVAL" Default="30m" Mode="" Description="Time between scheduled syncs, e.g. 30m, 1h or 90s; a bare number is minutes." Type="Variable" Display="always" Required="false" Mask="false">30m</Config>
+  <Config Name="LT1 HR" Target="LT1_HR" Default="" Mode="" Description="Your LT1 heart rate in bpm from a test, e.g. 155. Leave empty to assume 88% of LTHR." Type="Variable" Display="always" Required="false" Mask="false"></Config>
+  <Config Name="Time Zone" Target="TZ" Default="America/Los_Angeles" Mode="" Description="Time zone that &quot;today&quot; and Training Weeks follow, e.g. Europe/Oslo." Type="Variable" Display="always" Required="false" Mask="false">America/Los_Angeles</Config>
+</Container>

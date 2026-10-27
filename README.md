@@ -34,12 +34,9 @@ Every push to `master` builds the image and pushes it to `ghcr.io/sour/nsmperfor
 The app has no login, so keep it on the LAN.
 
 1. The repo is private, so its image is too. On GitHub, create a classic personal access token with only the `read:packages` scope. On the Unraid console run `docker login ghcr.io -u <github-user>` and paste the token as the password.
-2. In **Docker → Add Container**, set:
-   - **Repository**: `ghcr.io/sour/nsmperformancevalidator:latest`
-   - **Port**: container `3000` → any free host port
-   - **Path**: container `/data` → `/mnt/user/appdata/nsm`
-   - **Variables**: `INTERVALS_ATHLETE_ID`, `INTERVALS_API_KEY`, and optionally `SYNC_INTERVAL`, `LT1_HR` and `TZ`
-3. To update, use **Check for Updates** on the Docker tab, or pin a commit SHA tag instead of `latest`.
+2. Copy `unraid/nsm-performance-validator.xml` to `/boot/config/plugins/dockerMan/templates-user/my-NSMPerformanceValidator.xml` on the Unraid flash drive (e.g. through the `flash` share).
+3. In **Docker → Add Container**, pick **NSMPerformanceValidator** under **Template**, fill in the intervals.icu Athlete ID and API Key, and adjust the port, `/data` path (default `/mnt/user/appdata/nsm`), Sync Interval, LT1 HR and Time Zone if needed. Without the template, set the same fields by hand: repository `ghcr.io/sour/nsmperformancevalidator:latest`, container port `3000`, container path `/data`, and the variables `INTERVALS_ATHLETE_ID`, `INTERVALS_API_KEY`, `SYNC_INTERVAL`, `LT1_HR` and `TZ`.
+4. To update, use **Check for Updates** on the Docker tab, or pin a commit SHA tag instead of `latest`.
 
 The API key is only read by the server; the page never sees it.
 
