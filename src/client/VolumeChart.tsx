@@ -4,57 +4,58 @@ import * as echarts from "echarts/core";
 import { SVGRenderer } from "echarts/renderers";
 import { useEffect, useRef } from "react";
 import { miles } from "../domain/pace";
-import { VOLUME_CATEGORIES, type VolumeCategory, type VolumeWeek } from "../domain/weeklyVolume";
+import type { Volume, VolumeWeek } from "../domain/weeklyVolume";
 import { formatDate, formatMiles, formatVolume } from "./format";
 import { usePrefersDark } from "./usePrefersDark";
 
 echarts.use([BarChart, GridComponent, LegendComponent, TooltipComponent, SVGRenderer]);
 
-/** Weekly Volume: one bar of miles per Training Week, stacked by Run Type, with a table of the same numbers. */
+/** The two parts Weekly Volume is stacked by, bottom up. */
+const PARTS = ["Reps", "Easy"] as const;
+type Part = (typeof PARTS)[number];
+
+function part(week: VolumeWeek, p: Part): Volume {
+  return p === "Reps" ? week.reps : week.easy;
+}
+
+/** Weekly Volume: one bar of miles per Training Week, stacked into Reps and Easy, with a table of the same numbers. */
 export function VolumeChart({ weeks }: { weeks: VolumeWeek[] }) {
   if (weeks.length === 0) return <p className="rest">No Planned Workouts yet</p>;
-  // Other Run is rare, so it only takes a stack, legend entry and column once some week has one.
-  const categories = VOLUME_CATEGORIES.filter(
-    (category) => category !== "Other Run" || weeks.some((w) => w.byCategory[category].movingTime > 0),
-  );
   return (
     <section className="volume">
-      <VolumeBars weeks={weeks} categories={categories} />
-      <VolumeTable weeks={weeks} categories={categories} />
+      <VolumeBars weeks={weeks} />
+      <VolumeTable weeks={weeks} />
     </section>
   );
 }
 
-function VolumeBars({ weeks, categories }: { weeks: VolumeWeek[]; categories: VolumeCategory[] }) {
+function VolumeBars({ weeks }: { weeks: VolumeWeek[] }) {
   const ref = useRef<HTMLDivElement>(null);
   const dark = usePrefersDark();
 
   useEffect(() => {
     const el = ref.current!;
     const chart = echarts.init(el, null, { renderer: "svg" });
-    chart.setOption(chartOption(weeks, categories, chartColors()));
+    chart.setOption(chartOption(weeks, chartColors()));
     const observer = new ResizeObserver(() => chart.resize());
     observer.observe(el);
     return () => {
       observer.disconnect();
       chart.dispose();
     };
-  }, [weeks, categories.length, dark]);
+  }, [weeks, dark]);
 
   return <div ref={ref} className="volume-chart" />;
 }
 
-/** The CSS variable naming each category's color, so it follows the Run Type into every chart; Other Run stays neutral. */
-const COLOR_VARS: Record<VolumeCategory, string> = {
-  "Quality Run": "--run-quality",
-  "Easy Run": "--run-easy",
-  "Long Run": "--run-long",
-  "Unplanned Run": "--run-unplanned",
-  "Other Run": "--muted",
+/** The CSS variable naming each part's color: Reps take the Quality Run color, Easy the Easy Run color. */
+const COLOR_VARS: Record<Part, string> = {
+  Reps: "--run-quality",
+  Easy: "--run-easy",
 };
 
 interface ChartColors {
-  series: Record<VolumeCategory, string>;
+  series: Record<Part, string>;
   text: string;
   muted: string;
   grid: string;
@@ -65,7 +66,7 @@ function chartColors(): ChartColors {
   const style = getComputedStyle(document.documentElement);
   const v = (name: string) => style.getPropertyValue(name).trim();
   return {
-    series: Object.fromEntries(VOLUME_CATEGORIES.map((c) => [c, v(COLOR_VARS[c])])) as Record<VolumeCategory, string>,
+    series: { Reps: v(COLOR_VARS.Reps), Easy: v(COLOR_VARS.Easy) },
     text: v("--text"),
     muted: v("--muted"),
     grid: v("--border"),
@@ -73,7 +74,7 @@ function chartColors(): ChartColors {
   };
 }
 
-function chartOption(weeks: VolumeWeek[], categories: VolumeCategory[], c: ChartColors): echarts.EChartsCoreOption {
+function chartOption(weeks: VolumeWeek[], c: ChartColors): echarts.EChartsCoreOption {
   const axisLabel = { color: c.muted, fontSize: 11 };
   return {
     animation: false,
@@ -90,7 +91,7 @@ function chartOption(weeks: VolumeWeek[], categories: VolumeCategory[], c: Chart
       backgroundColor: c.surface,
       borderColor: c.grid,
       textStyle: { color: c.text },
-      formatter: (params: { dataIndex: number }[]) => weekTooltip(weeks[params[0]!.dataIndex]!, categories, c),
+      formatter: (params: { dataIndex: number }[]) => weekTooltip(weeks[params[0]!.dataIndex]!, c),
     },
     grid: { left: 48, right: 8, top: 40, bottom: 28 },
     xAxis: {
@@ -105,35 +106,34 @@ function chartOption(weeks: VolumeWeek[], categories: VolumeCategory[], c: Chart
       axisLabel: { ...axisLabel, formatter: "{value} mi" },
       splitLine: { lineStyle: { color: c.grid } },
     },
-    series: categories.map((category) => ({
+    series: PARTS.map((p) => ({
       type: "bar",
-      name: category,
+      name: p,
       stack: "volume",
       barMaxWidth: 28,
-      color: c.series[category],
+      color: c.series[p],
       // A surface-colored edge keeps a gap between stacked segments.
       itemStyle: { borderColor: c.surface, borderWidth: 1 },
       emphasis: { disabled: true },
-      data: weeks.map((w) => Number(miles(w.byCategory[category].distance).toFixed(2))),
+      data: weeks.map((w) => Number(miles(part(w, p).distance).toFixed(2))),
     })),
   };
 }
 
-function weekTooltip(week: VolumeWeek, categories: VolumeCategory[], c: ChartColors): string {
-  const rows = categories
-    .filter((category) => week.byCategory[category].movingTime > 0)
-    .map((category) => {
-      const swatch = `<span style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;background:${c.series[category]}"></span>`;
-      return `<div>${swatch}${category}: ${formatVolume(week.byCategory[category])}</div>`;
-    });
+function weekTooltip(week: VolumeWeek, c: ChartColors): string {
+  const rows = PARTS.map((p) => {
+    const swatch = `<span style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;background:${c.series[p]}"></span>`;
+    return `<div>${swatch}${p}: ${formatVolume(part(week, p))}</div>`;
+  });
   return [
     `<strong>${formatDate(week.start)} – ${formatDate(week.end)}</strong>`,
     ...rows,
     `<div>Total: ${formatVolume(week.total)}</div>`,
+    week.repShare === null ? "" : `<div>Reps: ${week.repShare}% of time</div>`,
   ].join("");
 }
 
-function VolumeTable({ weeks, categories }: { weeks: VolumeWeek[]; categories: VolumeCategory[] }) {
+function VolumeTable({ weeks }: { weeks: VolumeWeek[] }) {
   return (
     <details className="runs">
       <summary>Weeks</summary>
@@ -141,20 +141,22 @@ function VolumeTable({ weeks, categories }: { weeks: VolumeWeek[]; categories: V
         <thead>
           <tr>
             <th>Week of</th>
-            {categories.map((category) => (
-              <th key={category}>{category}</th>
+            {PARTS.map((p) => (
+              <th key={p}>{p}</th>
             ))}
             <th>Total</th>
+            <th>Rep share</th>
           </tr>
         </thead>
         <tbody>
           {[...weeks].reverse().map((w) => (
             <tr key={w.start}>
               <td>{formatDate(w.start)}</td>
-              {categories.map((category) => (
-                <td key={category}>{formatMiles(w.byCategory[category].distance)}</td>
+              {PARTS.map((p) => (
+                <td key={p}>{formatMiles(part(w, p).distance)}</td>
               ))}
               <td>{formatVolume(w.total)}</td>
+              <td>{w.repShare === null ? "" : `${w.repShare}%`}</td>
             </tr>
           ))}
         </tbody>

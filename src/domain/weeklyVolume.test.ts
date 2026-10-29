@@ -1,14 +1,25 @@
 import { describe, expect, it } from "vitest";
 import { toActivity } from "../server/intervals";
 import type { Activity, PlannedWorkout } from "./matching";
+import type { DetectedInterval } from "./qualityRun";
 import { weeklyVolume, type VolumeActivity } from "./weeklyVolume";
 
 function planned(id: number, date: string, name: string): PlannedWorkout {
   return { id, date, name, pairedActivityId: null };
 }
 
-function run(id: string, date: string, distance: number | null, a: Partial<Activity> = {}): VolumeActivity {
-  return { id, date, type: "Run", name: "Everett Running", movingTime: 2400, pairedEventId: null, distance, ...a };
+function run(
+  id: string,
+  date: string,
+  distance: number | null,
+  a: Partial<Activity> = {},
+  intervals: DetectedInterval[] | null = null,
+): VolumeActivity {
+  return { id, date, type: "Run", name: "Everett Running", movingTime: 2400, pairedEventId: null, distance, intervals, ...a };
+}
+
+function interval(type: string, movingTime: number, distance: number): DetectedInterval {
+  return { type, movingTime, distance, gap: 3.3, averageHeartrate: 168 };
 }
 
 describe("weeklyVolume", () => {
@@ -27,36 +38,87 @@ describe("weeklyVolume", () => {
     expect(weeklyVolume("2026-10-22", [], [run("a", "2026-10-20", 8000)])).toEqual([]);
   });
 
-  it("stacks each week by the Run Type of the Planned Workout each Activity Matched", () => {
+  it("splits each week into Rep Volume and Easy Volume, which sum to the week's total", () => {
     const plan = [
       planned(1, "2026-10-19", "2 x 10:00 at 163–177 bpm"),
       planned(2, "2026-10-20", "Easy Run"),
-      planned(3, "2026-10-21", "Easy Run"),
+      planned(3, "2026-10-22", "Strides"),
       planned(4, "2026-10-24", "Long Run"),
     ];
     const activities = [
-      run("q", "2026-10-19", 12000, { movingTime: 3600 }),
-      run("e1", "2026-10-20", 8000, { movingTime: 2700 }),
-      run("e2", "2026-10-21", 6000, { movingTime: 2000 }),
+      run("q", "2026-10-19", 12000, { movingTime: 3600 }, [
+        interval("WORK", 600, 2000),
+        interval("RECOVERY", 120, 300),
+        interval("WORK", 610, 2050),
+        interval("WORK", 20, 120),
+      ]),
+      run("e", "2026-10-20", 8000, { movingTime: 2700 }),
+      run("o", "2026-10-22", 4000, { movingTime: 1500 }),
       run("l", "2026-10-24", 20000, { movingTime: 6600 }),
       run("extra", "2026-10-25", 5000, { movingTime: 1800 }),
     ];
     const [week] = weeklyVolume("2026-10-25", plan, activities);
-    expect(week!.byCategory).toEqual({
-      "Quality Run": { distance: 12000, movingTime: 3600 },
-      "Easy Run": { distance: 14000, movingTime: 4700 },
-      "Long Run": { distance: 20000, movingTime: 6600 },
-      "Unplanned Run": { distance: 5000, movingTime: 1800 },
-      "Other Run": { distance: 0, movingTime: 0 },
-    });
-    expect(week!.total).toEqual({ distance: 51000, movingTime: 16700 });
+    expect(week!.reps).toEqual({ distance: 4050, movingTime: 1210 });
+    expect(week!.easy).toEqual({ distance: 49000 - 4050, movingTime: 16200 - 1210 });
+    expect(week!.total).toEqual({ distance: 49000, movingTime: 16200 });
   });
 
-  it("counts a run Matched to a Planned Workout with no Run Type as an Other Run, not an Unplanned Run", () => {
-    const activities = [run("strides", "2026-10-20", 4000, { movingTime: 1500 })];
-    const [week] = weeklyVolume("2026-10-22", [planned(1, "2026-10-20", "Strides")], activities);
-    expect(week!.byCategory["Other Run"]).toEqual({ distance: 4000, movingTime: 1500 });
-    expect(week!.byCategory["Unplanned Run"]).toEqual({ distance: 0, movingTime: 0 });
+  it("counts a Rep beyond the planned rep count as Rep Volume", () => {
+    const activities = [
+      run("q", "2026-10-21", 10000, { movingTime: 3000 }, [
+        interval("WORK", 360, 1200),
+        interval("WORK", 360, 1200),
+        interval("WORK", 365, 1210),
+      ]),
+    ];
+    const [week] = weeklyVolume("2026-10-22", [planned(1, "2026-10-21", "2 x 6:00 at 163–177 bpm")], activities);
+    expect(week!.reps).toEqual({ distance: 3610, movingTime: 1085 });
+  });
+
+  it("counts a Quality Run with no identified Reps entirely as Easy Volume", () => {
+    const plan = [
+      planned(1, "2026-10-19", "4 x 6:00 at 163–177 bpm"),
+      planned(2, "2026-10-20", "4 x 6:00 at 163–177 bpm"),
+      planned(3, "2026-10-21", "4 x 6:00 at 163–177 bpm"),
+    ];
+    const activities = [
+      run("not-fetched", "2026-10-19", 9000, { movingTime: 3000 }),
+      run("none-detected", "2026-10-20", 9000, { movingTime: 3000 }, []),
+      run("none-fit", "2026-10-21", 9000, { movingTime: 3000 }, [interval("WORK", 240, 900)]),
+    ];
+    const [week] = weeklyVolume("2026-10-22", plan, activities);
+    expect(week!.reps).toEqual({ distance: 0, movingTime: 0 });
+    expect(week!.easy).toEqual({ distance: 27000, movingTime: 9000 });
+  });
+
+  it("never gives a run more Rep Volume than its own distance and time", () => {
+    const activities = [
+      run("q", "2026-10-21", null, { movingTime: 700 }, [interval("WORK", 360, 1200), interval("WORK", 360, 1200)]),
+    ];
+    const [week] = weeklyVolume("2026-10-22", [planned(1, "2026-10-21", "2 x 6:00 at 163–177 bpm")], activities);
+    expect(week!.reps).toEqual({ distance: 0, movingTime: 700 });
+    expect(week!.easy).toEqual({ distance: 0, movingTime: 0 });
+  });
+
+  it("counts the work intervals of a run that is not a Quality Run as Easy Volume", () => {
+    const activities = [run("e", "2026-10-20", 8000, { movingTime: 2700 }, [interval("WORK", 360, 1200)])];
+    const [week] = weeklyVolume("2026-10-22", [planned(1, "2026-10-20", "Easy Run")], activities);
+    expect(week!.reps).toEqual({ distance: 0, movingTime: 0 });
+    expect(week!.easy).toEqual({ distance: 8000, movingTime: 2700 });
+  });
+
+  it("gives the Rep share of the week's moving time as a whole percentage", () => {
+    const activities = [
+      run("q", "2026-10-19", 12000, { movingTime: 3600 }, [interval("WORK", 600, 2000), interval("WORK", 600, 2000)]),
+      run("e", "2026-10-21", 8000, { movingTime: 2700 }),
+    ];
+    const [week] = weeklyVolume("2026-10-22", [planned(1, "2026-10-19", "2 x 10:00 at 163–177 bpm")], activities);
+    expect(week!.repShare).toBe(19);
+  });
+
+  it("gives a week with no running no Rep share", () => {
+    const [week] = weeklyVolume("2026-10-22", [planned(1, "2026-10-19", "Easy Run")], []);
+    expect(week!.repShare).toBeNull();
   });
 
   it("counts every running Activity and nothing else", () => {
@@ -81,7 +143,7 @@ describe("weeklyVolume", () => {
       distance: 5000,
       paired_event_id: null,
     });
-    const weeks = weeklyVolume("2026-10-26", [planned(1, "2026-10-19", "Easy Run")], [{ ...sunday, distance: 5000 }]);
+    const weeks = weeklyVolume("2026-10-26", [planned(1, "2026-10-19", "Easy Run")], [{ ...sunday, distance: 5000, intervals: null }]);
     expect(weeks.map((w) => [w.start, w.total.distance])).toEqual([
       ["2026-10-19", 5000],
       ["2026-10-26", 0],

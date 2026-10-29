@@ -13,8 +13,6 @@
   --over-target: #d42a2a;
   --run-quality: #2a78d6;
   --run-easy: #eb6834;
-  --run-long: #1baf7a;
-  --run-unplanned: #eda100;
   font-family: system-ui, sans-serif;
   color: var(--text);
   background: var(--bg);
@@ -36,8 +34,6 @@
     --over-target: #f05252;
     --run-quality: #3987e5;
     --run-easy: #d95926;
-    --run-long: #199e70;
-    --run-unplanned: #c98500;
   }
 }
 

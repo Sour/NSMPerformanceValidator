@@ -200,17 +200,17 @@ describe("Quality Runs", () => {
 });
 
 describe("/api/volume", () => {
-  it("has Weekly Volume for each Training Week through today's, stacked by Run Type", async () => {
+  it("has Weekly Volume for each Training Week through today's, split into Rep Volume and Easy Volume", async () => {
     const db = openDb(":memory:");
-    const event = {
-      id: 1,
-      start_date_local: "2026-10-13T00:00:00",
+    const event = (id: number, date: string, name: string, paired_activity_id: string | null) => ({
+      id,
+      start_date_local: `${date}T00:00:00`,
       category: "WORKOUT",
       type: "Run",
-      name: "Easy Run",
+      name,
       description: "[NSM]",
-      paired_activity_id: null,
-    };
+      paired_activity_id,
+    });
     const activity = (id: string, date: string, distance: number) => ({
       id,
       start_date_local: `${date}T07:00:00`,
@@ -220,21 +220,27 @@ describe("/api/volume", () => {
       distance,
       paired_event_id: null,
     });
+    const intervals = {
+      icu_intervals: [
+        { type: "WORK", moving_time: 600, distance: 2000, gap: 3.3, average_heartrate: 168 },
+        { type: "RECOVERY", moving_time: 120, distance: 300, gap: 2.5, average_heartrate: 150 },
+      ],
+    };
     saveSync(
       db,
       { from: "2026-10-01", to: "2026-10-30" },
-      [event],
-      [activity("easy", "2026-10-13", 8000), activity("extra", "2026-10-21", 5000)],
-      new Map(),
+      [event(1, "2026-10-13", "Easy Run", null), event(2, "2026-10-20", "1 x 10:00 at 163–177 bpm", "quality")],
+      [activity("easy", "2026-10-13", 8000), activity("quality", "2026-10-20", 7000), activity("extra", "2026-10-21", 5000)],
+      new Map([["quality", intervals]]),
       { finishedAt: "2026-10-23T12:00:00.000Z", syncedThrough: "2026-10-23" },
     );
     const app = createApp(db, () => "2026-10-23", idleRunner());
 
     const { weeks } = (await (await app.request("/api/volume")).json()) as VolumeResponse;
 
-    expect(weeks.map((w) => [w.start, w.byCategory["Easy Run"].distance, w.byCategory["Unplanned Run"].distance])).toEqual([
-      ["2026-10-12", 8000, 0],
-      ["2026-10-19", 0, 5000],
+    expect(weeks.map((w) => [w.start, w.reps.distance, w.easy.distance, w.total.distance, w.repShare])).toEqual([
+      ["2026-10-12", 0, 8000, 8000, 0],
+      ["2026-10-19", 2000, 10000, 12000, 13],
     ]);
   });
 });

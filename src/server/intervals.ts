@@ -98,6 +98,7 @@ export function detectedIntervals(response: unknown): DetectedInterval[] {
   return intervals.map((i) => ({
     type: String(i.type),
     movingTime: Number(i.moving_time ?? 0),
+    distance: typeof i.distance === "number" ? i.distance : null,
     gap: typeof i.gap === "number" ? i.gap : null,
     averageHeartrate: typeof i.average_heartrate === "number" ? i.average_heartrate : null,
   }));

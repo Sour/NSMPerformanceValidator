@@ -114,8 +114,7 @@ export function createApp(
     })
     .get("/api/volume", (c) => {
       const planned = loadPlannedWorkouts(db).map(({ raw: _, ...p }) => p);
-      const activities = loadActivities(db).map(({ raw: _, intervals: __, streams: ___, ...a }) => a);
-      return c.json<VolumeResponse>({ weeks: weeklyVolume(today(), planned, activities) });
+      return c.json<VolumeResponse>({ weeks: weeklyVolume(today(), planned, analysedActivities(db)) });
     })
     .get("/api/easy", (c) => c.json<EasyResponse>(easyRuns(db, today())))
     .get("/api/thresholds", (c) => {

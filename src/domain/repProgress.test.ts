@@ -11,7 +11,7 @@ function activity(id: number, date: string, intervals: DetectedInterval[] | null
 }
 
 function work(movingTime: number, gap: number, averageHeartrate = 165): DetectedInterval {
-  return { type: "WORK", movingTime, gap, averageHeartrate };
+  return { type: "WORK", movingTime, distance: null, gap, averageHeartrate };
 }
 
 describe("repLengthCards", () => {
@@ -67,6 +67,27 @@ describe("repLengthCards", () => {
     expect(card.previous).toMatchObject({ date: "2026-10-07", repGap: 3.1 });
   });
 
+  it("counts a Rep beyond the planned rep count in Rep GAP, Rep HR, Efficiency and Over Target", () => {
+    const cards = repLengthCards(
+      [planned(1, "2026-10-21", "2 x 6:00 at 163–177 bpm")],
+      [
+        activity(1, "2026-10-21", [
+          work(360, 3.0, 170),
+          { type: "RECOVERY", movingTime: 90, distance: null, gap: 2.5, averageHeartrate: 150 },
+          work(360, 3.0, 170),
+          work(360, 3.6, 180),
+          work(240, 3.6, 175),
+          work(20, 5.0, 160),
+        ]),
+      ],
+    );
+    const run = cards[0]!.runs[0]!;
+    expect(run).toMatchObject({ complete: true, repsRun: 3, overTarget: true });
+    expect(run.repGap).toBeCloseTo(3.2, 9);
+    expect(run.repHr).toBeCloseTo(520 / 3, 9);
+    expect(run.efficiency).toBeCloseTo((3.2 * 60) / (520 / 3), 9);
+  });
+
   it("skips a Complete run without Rep GAP when taking the latest and previous", () => {
     const cards = repLengthCards(
       [planned(1, "2026-10-07", "2 x 6:00"), planned(2, "2026-10-14", "2 x 6:00"), planned(3, "2026-10-21", "2 x 6:00")],
@@ -74,8 +95,8 @@ describe("repLengthCards", () => {
         activity(1, "2026-10-07", [work(360, 3.1), work(360, 3.1)]),
         activity(2, "2026-10-14", [work(360, 3.2), work(360, 3.2)]),
         activity(3, "2026-10-21", [
-          { type: "WORK", movingTime: 360, gap: null, averageHeartrate: 165 },
-          { type: "WORK", movingTime: 360, gap: null, averageHeartrate: 165 },
+          { type: "WORK", movingTime: 360, distance: null, gap: null, averageHeartrate: 165 },
+          { type: "WORK", movingTime: 360, distance: null, gap: null, averageHeartrate: 165 },
         ]),
       ],
     );
@@ -115,7 +136,7 @@ describe("repLengthCards", () => {
       [planned(1, "2026-10-14", "2 x 6:00"), planned(2, "2026-10-21", "1 x 6:00")],
       [
         activity(1, "2026-10-14", [work(360, 3.0, 180), work(360, 3.0, 180)]),
-        activity(2, "2026-10-21", [{ type: "WORK", movingTime: 360, gap: 3.2, averageHeartrate: null }]),
+        activity(2, "2026-10-21", [{ type: "WORK", movingTime: 360, distance: null, gap: 3.2, averageHeartrate: null }]),
       ],
     );
     expect(cards[0]!.runs[0]!.efficiency).toBeCloseTo(1.0, 9);
@@ -167,9 +188,9 @@ describe("repLengthCards", () => {
       [
         activity(1, "2026-10-21", [
           work(360, 3.3, 168),
-          { type: "RECOVERY", movingTime: 90, gap: 2.0, averageHeartrate: 150 },
+          { type: "RECOVERY", movingTime: 90, distance: null, gap: 2.0, averageHeartrate: 150 },
           work(355, 3.25, 174),
-          { type: "WORK", movingTime: 365, gap: 3.2, averageHeartrate: null },
+          { type: "WORK", movingTime: 365, distance: null, gap: 3.2, averageHeartrate: null },
           work(360, 3.1, 179),
         ]),
       ],
@@ -178,6 +199,7 @@ describe("repLengthCards", () => {
       { gap: 3.3, hr: 168, aboveCeiling: false },
       { gap: 3.25, hr: 174, aboveCeiling: false },
       { gap: 3.2, hr: null, aboveCeiling: false },
+      { gap: 3.1, hr: 179, aboveCeiling: true },
     ]);
   });
 

@@ -11,6 +11,8 @@ export interface DetectedInterval {
   type: string;
   /** Seconds. */
   movingTime: number;
+  /** Metres; null when intervals.icu recorded none. */
+  distance: number | null;
   /** Grade-adjusted speed, metres per second. */
   gap: number | null;
   averageHeartrate: number | null;
@@ -19,7 +21,7 @@ export interface DetectedInterval {
 export interface QualityRun {
   format: QualityRunFormat;
   reps: DetectedInterval[];
-  /** Every planned Rep was run. */
+  /** At least the planned number of Reps was run. */
   complete: boolean;
   /** Rep GAP as a grade-adjusted speed in metres per second; null without Reps. */
   repGap: number | null;
@@ -60,7 +62,7 @@ export function heartRateCeiling(plannedWorkoutName: string): number | null {
 
 /**
  * Picks the Reps out of an Activity's detected intervals, using the Planned Workout's Format as the template:
- * the work intervals within 15% of the Rep Length, in order, up to the planned rep count.
+ * every work interval within 15% of the Rep Length, in order, even beyond the planned rep count.
  * `hrCeiling` is the top of the Planned Workout's heart-rate target, for the Over Target check.
  */
 export function qualityRun(
@@ -68,15 +70,13 @@ export function qualityRun(
   intervals: DetectedInterval[],
   hrCeiling: number | null,
 ): QualityRun {
-  const reps = intervals
-    .filter(
-      (i) => i.type === "WORK" && Math.abs(i.movingTime - format.repLength) <= format.repLength * REP_LENGTH_TOLERANCE,
-    )
-    .slice(0, format.reps);
+  const reps = intervals.filter(
+    (i) => i.type === "WORK" && Math.abs(i.movingTime - format.repLength) <= format.repLength * REP_LENGTH_TOLERANCE,
+  );
   return {
     format,
     reps,
-    complete: reps.length === format.reps,
+    complete: reps.length >= format.reps,
     repGap: timeWeightedMean(reps, (r) => r.gap),
     repHr: timeWeightedMean(reps, (r) => r.averageHeartrate),
     efficiency: efficiency(reps),
