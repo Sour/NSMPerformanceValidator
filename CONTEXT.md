@@ -119,16 +119,20 @@ _Avoid_: No data, unknown
 The threshold pace in the runner's intervals.icu Run settings. It is shown only as a reference beside LT2 Pace, so the runner can see when that setting is out of date; it never feeds the estimate.
 
 **Weekly Volume**:
-Total running distance and time in a Training Week, across all Run Types. It is split into exactly two parts, Rep Volume and Easy Volume, because the NSM signal is how little of the week is run hard.
+Total running distance and time in a Training Week, across all Run Types. It is split into exactly two parts, Quality Volume and Easy Volume, because the NSM signal is how little of the week is run hard.
 _Avoid_: Mileage, load
 
 **Easy Volume**:
-All of a Training Week's running that is not Rep Volume: Easy Runs, Long Runs, Unplanned Runs, Other Runs and every Quality Run's Quality Support.
+All of a Training Week's running that is not Quality Volume: Easy Runs, Long Runs, Unplanned Runs, Other Runs and every Quality Run's Quality Support.
 _Avoid_: Easy miles, aerobic volume
 
-**Rep Volume**:
-The distance and time of a Quality Run's Reps: the running done at the Quality Run's heart-rate target.
-_Avoid_: Quality volume, hard miles
+**Quality Volume**:
+The distance and time of a Quality Run's Reps: the running done at the Quality Run's heart-rate target. Only the Reps count; the rest of a Quality Run is Quality Support.
+_Avoid_: Rep Volume, hard miles
+
+**Quality Share / Easy Share**:
+Quality Volume's and Easy Volume's moving time, each as a whole percentage of the Training Week's moving time; together they are NSM's intensity balance for the week. A week with no running has neither.
+_Avoid_: Rep share, intensity ratio
 
 **Quality Support**:
 The distance and time of a Quality Run that is not a Rep: its warm-up, cool-down and recoveries. It counts toward Easy Volume.
