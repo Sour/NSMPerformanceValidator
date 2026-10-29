@@ -11,14 +11,14 @@ import { usePrefersDark } from "./usePrefersDark";
 echarts.use([BarChart, GridComponent, LegendComponent, TooltipComponent, SVGRenderer]);
 
 /** The two parts Weekly Volume is stacked by, bottom up. */
-const PARTS = ["Reps", "Easy"] as const;
+const PARTS = ["Quality", "Easy"] as const;
 type Part = (typeof PARTS)[number];
 
 function part(week: VolumeWeek, p: Part): Volume {
-  return p === "Reps" ? week.reps : week.easy;
+  return p === "Quality" ? week.quality : week.easy;
 }
 
-/** Weekly Volume: one bar of miles per Training Week, stacked into Reps and Easy, with a table of the same numbers. */
+/** Weekly Volume: one bar of miles per Training Week, stacked into Quality and Easy, with a table of the same numbers. */
 export function VolumeChart({ weeks }: { weeks: VolumeWeek[] }) {
   if (weeks.length === 0) return <p className="rest">No Planned Workouts yet</p>;
   return (
@@ -48,9 +48,9 @@ function VolumeBars({ weeks }: { weeks: VolumeWeek[] }) {
   return <div ref={ref} className="volume-chart" />;
 }
 
-/** The CSS variable naming each part's color: Reps take the Quality Run color, Easy the Easy Run color. */
+/** The CSS variable naming each part's color: Quality takes the Quality Run color, Easy the Easy Run color. */
 const COLOR_VARS: Record<Part, string> = {
-  Reps: "--run-quality",
+  Quality: "--run-quality",
   Easy: "--run-easy",
 };
 
@@ -66,7 +66,7 @@ function chartColors(): ChartColors {
   const style = getComputedStyle(document.documentElement);
   const v = (name: string) => style.getPropertyValue(name).trim();
   return {
-    series: { Reps: v(COLOR_VARS.Reps), Easy: v(COLOR_VARS.Easy) },
+    series: { Quality: v(COLOR_VARS.Quality), Easy: v(COLOR_VARS.Easy) },
     text: v("--text"),
     muted: v("--muted"),
     grid: v("--border"),
@@ -129,7 +129,7 @@ function weekTooltip(week: VolumeWeek, c: ChartColors): string {
     `<strong>${formatDate(week.start)} – ${formatDate(week.end)}</strong>`,
     ...rows,
     `<div>Total: ${formatVolume(week.total)}</div>`,
-    week.repShare === null ? "" : `<div>Reps: ${week.repShare}% of time</div>`,
+    week.qualityShare === null ? "" : `<div>Quality ${week.qualityShare}% · Easy ${week.easyShare}% of time</div>`,
   ].join("");
 }
 
@@ -145,7 +145,7 @@ function VolumeTable({ weeks }: { weeks: VolumeWeek[] }) {
               <th key={p}>{p}</th>
             ))}
             <th>Total</th>
-            <th>Rep share</th>
+            <th>Quality / Easy Share</th>
           </tr>
         </thead>
         <tbody>
@@ -156,7 +156,7 @@ function VolumeTable({ weeks }: { weeks: VolumeWeek[] }) {
                 <td key={p}>{formatMiles(part(w, p).distance)}</td>
               ))}
               <td>{formatVolume(w.total)}</td>
-              <td>{w.repShare === null ? "" : `${w.repShare}%`}</td>
+              <td>{w.qualityShare === null ? "" : `${w.qualityShare}% / ${w.easyShare}%`}</td>
             </tr>
           ))}
         </tbody>

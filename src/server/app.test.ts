@@ -200,7 +200,7 @@ describe("Quality Runs", () => {
 });
 
 describe("/api/volume", () => {
-  it("has Weekly Volume for each Training Week through today's, split into Rep Volume and Easy Volume", async () => {
+  it("has Weekly Volume for each Training Week through today's, split into Quality Volume and Easy Volume", async () => {
     const db = openDb(":memory:");
     const event = (id: number, date: string, name: string, paired_activity_id: string | null) => ({
       id,
@@ -238,9 +238,9 @@ describe("/api/volume", () => {
 
     const { weeks } = (await (await app.request("/api/volume")).json()) as VolumeResponse;
 
-    expect(weeks.map((w) => [w.start, w.reps.distance, w.easy.distance, w.total.distance, w.repShare])).toEqual([
-      ["2026-10-12", 0, 8000, 8000, 0],
-      ["2026-10-19", 2000, 10000, 12000, 13],
+    expect(weeks.map((w) => [w.start, w.quality.distance, w.easy.distance, w.total.distance, w.qualityShare, w.easyShare])).toEqual([
+      ["2026-10-12", 0, 8000, 8000, 0, 100],
+      ["2026-10-19", 2000, 10000, 12000, 13, 87],
     ]);
   });
 });

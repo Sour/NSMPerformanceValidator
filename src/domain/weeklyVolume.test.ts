@@ -38,7 +38,7 @@ describe("weeklyVolume", () => {
     expect(weeklyVolume("2026-10-22", [], [run("a", "2026-10-20", 8000)])).toEqual([]);
   });
 
-  it("splits each week into Rep Volume and Easy Volume, which sum to the week's total", () => {
+  it("splits each week into Quality Volume and Easy Volume, which sum to the week's total", () => {
     const plan = [
       planned(1, "2026-10-19", "2 x 10:00 at 163–177 bpm"),
       planned(2, "2026-10-20", "Easy Run"),
@@ -58,12 +58,12 @@ describe("weeklyVolume", () => {
       run("extra", "2026-10-25", 5000, { movingTime: 1800 }),
     ];
     const [week] = weeklyVolume("2026-10-25", plan, activities);
-    expect(week!.reps).toEqual({ distance: 4050, movingTime: 1210 });
+    expect(week!.quality).toEqual({ distance: 4050, movingTime: 1210 });
     expect(week!.easy).toEqual({ distance: 49000 - 4050, movingTime: 16200 - 1210 });
     expect(week!.total).toEqual({ distance: 49000, movingTime: 16200 });
   });
 
-  it("counts a Rep beyond the planned rep count as Rep Volume", () => {
+  it("counts a Rep beyond the planned rep count as Quality Volume", () => {
     const activities = [
       run("q", "2026-10-21", 10000, { movingTime: 3000 }, [
         interval("WORK", 360, 1200),
@@ -72,7 +72,7 @@ describe("weeklyVolume", () => {
       ]),
     ];
     const [week] = weeklyVolume("2026-10-22", [planned(1, "2026-10-21", "2 x 6:00 at 163–177 bpm")], activities);
-    expect(week!.reps).toEqual({ distance: 3610, movingTime: 1085 });
+    expect(week!.quality).toEqual({ distance: 3610, movingTime: 1085 });
   });
 
   it("counts a Quality Run with no identified Reps entirely as Easy Volume", () => {
@@ -87,38 +87,48 @@ describe("weeklyVolume", () => {
       run("none-fit", "2026-10-21", 9000, { movingTime: 3000 }, [interval("WORK", 240, 900)]),
     ];
     const [week] = weeklyVolume("2026-10-22", plan, activities);
-    expect(week!.reps).toEqual({ distance: 0, movingTime: 0 });
+    expect(week!.quality).toEqual({ distance: 0, movingTime: 0 });
     expect(week!.easy).toEqual({ distance: 27000, movingTime: 9000 });
   });
 
-  it("never gives a run more Rep Volume than its own distance and time", () => {
+  it("never gives a run more Quality Volume than its own distance and time", () => {
     const activities = [
       run("q", "2026-10-21", null, { movingTime: 700 }, [interval("WORK", 360, 1200), interval("WORK", 360, 1200)]),
     ];
     const [week] = weeklyVolume("2026-10-22", [planned(1, "2026-10-21", "2 x 6:00 at 163–177 bpm")], activities);
-    expect(week!.reps).toEqual({ distance: 0, movingTime: 700 });
+    expect(week!.quality).toEqual({ distance: 0, movingTime: 700 });
     expect(week!.easy).toEqual({ distance: 0, movingTime: 0 });
   });
 
   it("counts the work intervals of a run that is not a Quality Run as Easy Volume", () => {
     const activities = [run("e", "2026-10-20", 8000, { movingTime: 2700 }, [interval("WORK", 360, 1200)])];
     const [week] = weeklyVolume("2026-10-22", [planned(1, "2026-10-20", "Easy Run")], activities);
-    expect(week!.reps).toEqual({ distance: 0, movingTime: 0 });
+    expect(week!.quality).toEqual({ distance: 0, movingTime: 0 });
     expect(week!.easy).toEqual({ distance: 8000, movingTime: 2700 });
   });
 
-  it("gives the Rep share of the week's moving time as a whole percentage", () => {
+  it("gives the Quality Share and Easy Share of the week's moving time as whole percentages", () => {
     const activities = [
       run("q", "2026-10-19", 12000, { movingTime: 3600 }, [interval("WORK", 600, 2000), interval("WORK", 600, 2000)]),
       run("e", "2026-10-21", 8000, { movingTime: 2700 }),
     ];
     const [week] = weeklyVolume("2026-10-22", [planned(1, "2026-10-19", "2 x 10:00 at 163–177 bpm")], activities);
-    expect(week!.repShare).toBe(19);
+    expect([week!.qualityShare, week!.easyShare]).toEqual([19, 81]);
   });
 
-  it("gives a week with no running no Rep share", () => {
+  it("makes the Quality Share and Easy Share add up to 100 when each would round up", () => {
+    // 1000 of 8000 seconds is 12.5% Quality and 87.5% Easy, which round to 13 and 88 on their own.
+    const activities = [
+      run("q", "2026-10-19", 12000, { movingTime: 4000 }, [interval("WORK", 500, 1700), interval("WORK", 500, 1700)]),
+      run("e", "2026-10-21", 8000, { movingTime: 4000 }),
+    ];
+    const [week] = weeklyVolume("2026-10-22", [planned(1, "2026-10-19", "2 x 8:20 at 163–177 bpm")], activities);
+    expect([week!.qualityShare, week!.easyShare]).toEqual([13, 87]);
+  });
+
+  it("gives a week with no running neither share", () => {
     const [week] = weeklyVolume("2026-10-22", [planned(1, "2026-10-19", "Easy Run")], []);
-    expect(week!.repShare).toBeNull();
+    expect([week!.qualityShare, week!.easyShare]).toEqual([null, null]);
   });
 
   it("counts every running Activity and nothing else", () => {

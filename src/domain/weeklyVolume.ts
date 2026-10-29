@@ -23,12 +23,14 @@ export interface VolumeWeek {
   /** Sunday, YYYY-MM-DD. */
   end: string;
   total: Volume;
-  /** Rep Volume: the Reps of the week's Matched Quality Runs. */
-  reps: Volume;
-  /** Easy Volume: everything in `total` that is not Rep Volume. */
+  /** Quality Volume: the Reps of the week's Matched Quality Runs. */
+  quality: Volume;
+  /** Easy Volume: everything in `total` that is not Quality Volume. */
   easy: Volume;
-  /** Rep Volume's moving time as a whole percentage of the week's; null for a week with no running. */
-  repShare: number | null;
+  /** Quality Share: Quality Volume's moving time as a whole percentage of the week's; null for a week with no running. */
+  qualityShare: number | null;
+  /** Easy Share: Easy Volume's moving time as a whole percentage of the week's, so it and `qualityShare` add up to 100; null for a week with no running. */
+  easyShare: number | null;
 }
 
 /**
@@ -41,12 +43,12 @@ export function weeklyVolume(today: string, planned: PlannedWorkout[], activitie
   if (first === undefined) return [];
   const weeks: VolumeWeek[] = [];
   for (let start = weekStart(first); start <= today; start = addDays(start, 7)) {
-    weeks.push({ start, end: addDays(start, 6), total: empty(), reps: empty(), easy: empty(), repShare: null });
+    weeks.push({ start, end: addDays(start, 6), total: empty(), quality: empty(), easy: empty(), qualityShare: null, easyShare: null });
   }
 
   const matches = matchActivities(planned, activities);
-  /** An Activity's Rep Volume, never more than the Activity itself, so its Easy Volume is never negative. */
-  const repVolume = (a: VolumeActivity, run: Volume): Volume => {
+  /** An Activity's Quality Volume, never more than the Activity itself, so its Easy Volume is never negative. */
+  const qualityVolume = (a: VolumeActivity, run: Volume): Volume => {
     const match = matches.find((m) => m.activityId === a.id);
     const plannedWorkout = planned.find((p) => p.id === match?.plannedWorkoutId);
     const format = plannedWorkout && qualityRunFormat(plannedWorkout.name);
@@ -61,13 +63,15 @@ export function weeklyVolume(today: string, planned: PlannedWorkout[], activitie
     const week = weeks.find((w) => a.date >= w.start && a.date <= w.end);
     if (!week) continue;
     const run = { distance: a.distance ?? 0, movingTime: a.movingTime };
-    const reps = repVolume(a, run);
+    const quality = qualityVolume(a, run);
     add(week.total, run);
-    add(week.reps, reps);
-    add(week.easy, { distance: run.distance - reps.distance, movingTime: run.movingTime - reps.movingTime });
+    add(week.quality, quality);
+    add(week.easy, { distance: run.distance - quality.distance, movingTime: run.movingTime - quality.movingTime });
   }
   for (const week of weeks) {
-    week.repShare = week.total.movingTime > 0 ? Math.round((week.reps.movingTime / week.total.movingTime) * 100) : null;
+    if (week.total.movingTime === 0) continue;
+    week.qualityShare = Math.round((week.quality.movingTime / week.total.movingTime) * 100);
+    week.easyShare = 100 - week.qualityShare;
   }
   return weeks;
 }
