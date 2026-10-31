@@ -7,8 +7,16 @@ Tracks a runner's progress on a Norwegian Singles Method (NSM) training plan by 
 ### Plan
 
 **Planned Workout**:
-A workout scheduled on the calendar ahead of time (built in the NSM app and synced to the watch). It is the source of truth for what kind of run something was meant to be.
+A workout scheduled on the calendar ahead of time (built in this app's planner, or earlier in the NSM app, and synced to the watch). It is the source of truth for what kind of run something was meant to be. Once its day has passed it is never changed.
 _Avoid_: Scheduled run, plan item
+
+**Week Plan**:
+The runner's layout of one Training Week's workouts in this app: a Run Type, and a Quality Run Format or duration, for each day, or a rest day. It is a draft until pushed; once pushed, its workouts become Planned Workouts. A new Week Plan starts as a copy of the previous week's. Only the current Training Week's remaining days and next Training Week can be planned.
+_Avoid_: Plan, schedule, template
+
+**Plan Suggestion**:
+A check the planner makes on a Week Plan from recent progress (pull back, easy discipline, volume step, Quality Share, threshold check). It is advice the runner may accept or dismiss; it never blocks a push.
+_Avoid_: Recommendation, alert, rule
 
 **Run Type**:
 The category of a run, taken from its Planned Workout: Quality Run, Easy Run or Long Run.
@@ -31,7 +39,7 @@ One timed work interval of a Quality Run, run at the planned heart-rate target (
 _Avoid_: Interval, lap, set
 
 **LTHR**:
-The runner's lactate-threshold (LT2) heart rate, the anchor of every Quality Run's heart-rate target. It is read from the Planned Workouts rather than set separately: a Rep's target is 90–98% of LTHR, so LTHR follows the plan whenever the runner changes it in the NSM app. The current LTHR is the one given by the most recent Quality Run's target, and it is the one every LT1 Pace and LT2 Pace is measured against, past weeks included.
+The runner's lactate-threshold (LT2) heart rate, the anchor of every Quality Run's heart-rate target. It is read from the Planned Workouts rather than set separately: a Rep's target is 90–98% of LTHR, so LTHR follows the plan. New Planned Workouts take their LTHR from the runner's intervals.icu Run settings when they are planned. The current LTHR is the one given by the most recent Quality Run's target, and it is the one every LT1 Pace and LT2 Pace is measured against, past weeks included.
 _Avoid_: LT2 HR, threshold HR, max HR
 
 **LT1 HR**:
@@ -51,7 +59,7 @@ The runner's maximum heart rate, as recorded in intervals.icu. It anchors the Ea
 _Avoid_: Peak HR
 
 **Easy HR Target**:
-The planned heart-rate window of an Easy Run or Long Run, as a percentage of Max HR (e.g. 62–70%). It is read from the Planned Workouts, so it follows the plan; the current one is given by the most recent Easy Run or Long Run.
+The planned heart-rate window of an Easy Run or Long Run, as a percentage of Max HR (e.g. 62–70%). It is read from the Planned Workouts, so it follows the plan; the current one is given by the most recent Easy Run or Long Run. The runner sets the one new Planned Workouts are given; it is the same for every Easy Run and Long Run in a Training Week.
 _Avoid_: Easy zone, Z1, easy ceiling
 
 **Easy Run**:
@@ -133,6 +141,14 @@ _Avoid_: Rep Volume, hard miles
 **Quality Share / Easy Share**:
 Quality Volume's and Easy Volume's moving time, each as a whole percentage of the Training Week's moving time; together they are NSM's intensity balance for the week. A week with no running has neither.
 _Avoid_: Rep share, intensity ratio
+
+**Planned Quality Share**:
+The planned time of a Training Week's Reps as a whole percentage of the week's total planned time: Quality Share before the week is run.
+_Avoid_: Quality Share (when the planned figure is meant)
+
+**Quality Share Target**:
+The Quality Share the runner aims for each Training Week (e.g. 25%). Planned Quality Share is checked against it; it never changes what counts toward progress.
+_Avoid_: Quality ratio, intensity target
 
 **Quality Support**:
 The distance and time of a Quality Run that is not a Rep: its warm-up, cool-down and recoveries. It counts toward Easy Volume.
