@@ -1,4 +1,4 @@
-import { formatDuration, miles, secondsPerMile } from "../domain/pace";
+import { formatDuration, formatHoursMinutes, miles, secondsPerMile } from "../domain/pace";
 import type { Volume } from "../domain/weeklyVolume";
 
 /** A Format as written in the plan, e.g. "4 × 6:00, 1:30 rec". */
@@ -6,11 +6,7 @@ export function formatText(reps: number, repLength: number, recovery: number | n
   return `${reps} × ${formatDuration(repLength)}${recovery === null ? "" : `, ${formatDuration(recovery)} rec`}`;
 }
 
-/** Seconds as h:mm, e.g. 5400 as "1:30". */
-export function formatHoursMinutes(seconds: number): string {
-  const minutes = Math.round(seconds / 60);
-  return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
-}
+export { formatHoursMinutes } from "../domain/pace";
 
 /** Metres as miles to one decimal place, e.g. "6.2 mi". */
 export function formatMiles(metres: number): string {
@@ -47,4 +43,9 @@ export function formatDate(date: string, withWeekday = false): string {
     day: "numeric",
     month: "short",
   });
+}
+
+/** An Activity's page on intervals.icu, its detail view. */
+export function activityUrl(activityId: string): string {
+  return `https://intervals.icu/activities/${encodeURIComponent(activityId)}`;
 }

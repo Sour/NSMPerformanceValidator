@@ -1,6 +1,6 @@
 # NSM Performance Validator
 
-Tracks progress on a Norwegian Singles Method training plan from intervals.icu data. See `CONTEXT.md` for the vocabulary.
+Tracks progress on a Norwegian Singles Method training plan from intervals.icu data, and builds each week's plan. See `CONTEXT.md` for the vocabulary.
 
 ## Running locally
 
@@ -39,6 +39,10 @@ The app has no login, so keep it on the LAN.
 4. To update, use **Check for Updates** on the Docker tab, or pin a commit SHA tag instead of `latest`.
 
 The API key is only read by the server; the page never sees it.
+
+## Planning
+
+The **Plan** page lays out the current and next Training Week and pushes them to intervals.icu as Planned Workouts in the NSM app's format, which intervals.icu sends on to the watch (`docs/adr/0004-app-writes-planned-workouts.md`). Pushing needs an API key that can create and delete calendar events, and LTHR and Max HR set in the intervals.icu Run settings. Once you switch over, stop the NSM app pushing to intervals.icu, or it will keep re-adding weeks.
 
 ## Development
 

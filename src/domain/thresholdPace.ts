@@ -56,6 +56,11 @@ export interface ThresholdPaces {
 const TARGET_LOW = 0.9;
 const TARGET_HIGH = 0.98;
 
+/** A Rep's heart-rate target for `lthr`, in whole bpm, as a Quality Run's name gives it: 90–98% of LTHR, rounded. */
+export function repHrTarget(lthr: number): { low: number; high: number } {
+  return { low: Math.round(lthr * TARGET_LOW), high: Math.round(lthr * TARGET_HIGH) };
+}
+
 /** Without one set by the runner, LT1 HR is assumed to be this fraction of LTHR. */
 const ASSUMED_LT1_FRACTION = 0.88;
 

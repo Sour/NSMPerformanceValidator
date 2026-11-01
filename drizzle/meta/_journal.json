@@ -36,6 +36,13 @@
       "when": 1793131799558,
       "tag": "0004_easy_pace",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1793547723032,
+      "tag": "0005_week_plans",
+      "breakpoints": true
     }
   ]
 }

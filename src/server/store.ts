@@ -1,7 +1,17 @@
 import { and, asc, between, eq, notInArray } from "drizzle-orm";
+import type { EasyHrTarget } from "../domain/easyTrend";
 import type { Activity, PlannedWorkout } from "../domain/matching";
+import type { PushedDay, WeekPlanDay } from "../domain/weekPlan";
 import type { Db } from "./db";
-import { activities, athleteSettings, plannedWorkouts, syncStatus } from "./db/schema";
+import {
+  activities,
+  athleteSettings,
+  plannedWorkouts,
+  plannerSettings,
+  planSuggestionDismissals,
+  syncStatus,
+  weekPlans,
+} from "./db/schema";
 import { toActivity, toPlannedWorkout, type IntervalsActivity, type IntervalsEvent } from "./intervals";
 
 export type StoredPlannedWorkout = PlannedWorkout & { raw: unknown };
@@ -144,6 +154,8 @@ export interface AthleteSettings {
   runThresholdPace: number | null;
   /** Max HR, in bpm. */
   maxHr: number | null;
+  /** LTHR, in bpm. */
+  lthr: number | null;
 }
 
 /** Records what the latest sync read from the athlete's intervals.icu Run settings. */
@@ -156,10 +168,10 @@ export function saveAthleteSettings(db: Db, settings: AthleteSettings): void {
 export function loadAthleteSettings(db: Db): AthleteSettings {
   return (
     db
-      .select({ runThresholdPace: athleteSettings.runThresholdPace, maxHr: athleteSettings.maxHr })
+      .select({ runThresholdPace: athleteSettings.runThresholdPace, maxHr: athleteSettings.maxHr, lthr: athleteSettings.lthr })
       .from(athleteSettings)
       .where(eq(athleteSettings.id, ATHLETE_SETTINGS_ID))
-      .get() ?? { runThresholdPace: null, maxHr: null }
+      .get() ?? { runThresholdPace: null, maxHr: null, lthr: null }
   );
 }
 
@@ -194,4 +206,76 @@ export function loadActivities(db: Db): StoredActivity[] {
     .from(activities)
     .orderBy(asc(activities.date), asc(activities.id))
     .all();
+}
+
+/** A stored Week Plan: the draft and what pushes made of it. */
+export interface StoredWeekPlan {
+  /** The Training Week's Monday. */
+  week: string;
+  /** The draft, Monday first. */
+  days: WeekPlanDay[];
+  /** What the pushes made of each day, by date; empty until the first push. */
+  pushed: Record<string, PushedDay>;
+  /** When the latest push finished, as an ISO timestamp; null before the first. */
+  pushedAt: string | null;
+  /** A sync found a pushed workout edited or deleted on intervals.icu since the latest push. */
+  changedOnIntervals: boolean;
+}
+
+export function loadWeekPlan(db: Db, week: string): StoredWeekPlan | null {
+  const row = db.select().from(weekPlans).where(eq(weekPlans.week, week)).get();
+  return row ? toStoredWeekPlan(row) : null;
+}
+
+/** Every stored Week Plan, oldest first. */
+export function loadWeekPlans(db: Db): StoredWeekPlan[] {
+  return db.select().from(weekPlans).orderBy(asc(weekPlans.week)).all().map(toStoredWeekPlan);
+}
+
+function toStoredWeekPlan(row: typeof weekPlans.$inferSelect): StoredWeekPlan {
+  return { ...row, days: row.days as WeekPlanDay[], pushed: row.pushed as Record<string, PushedDay> };
+}
+
+export function saveWeekPlan(db: Db, plan: StoredWeekPlan): void {
+  db.insert(weekPlans).values(plan).onConflictDoUpdate({ target: weekPlans.week, set: plan }).run();
+}
+
+const PLANNER_SETTINGS_ID = 1;
+
+/** What the runner has set for the planner; each null when not set, so its default applies. */
+export interface StoredPlannerSettings {
+  easyHrTarget: EasyHrTarget | null;
+  qualityShareTarget: number | null;
+}
+
+export function loadPlannerSettings(db: Db): StoredPlannerSettings {
+  const row = db.select().from(plannerSettings).where(eq(plannerSettings.id, PLANNER_SETTINGS_ID)).get();
+  return {
+    easyHrTarget: row?.easyHrLow != null && row.easyHrHigh != null ? { low: row.easyHrLow, high: row.easyHrHigh } : null,
+    qualityShareTarget: row?.qualityShareTarget ?? null,
+  };
+}
+
+export function savePlannerSettings(db: Db, settings: StoredPlannerSettings): void {
+  const row = {
+    id: PLANNER_SETTINGS_ID,
+    easyHrLow: settings.easyHrTarget?.low ?? null,
+    easyHrHigh: settings.easyHrTarget?.high ?? null,
+    qualityShareTarget: settings.qualityShareTarget,
+  };
+  db.insert(plannerSettings).values(row).onConflictDoUpdate({ target: plannerSettings.id, set: row }).run();
+}
+
+/** The ids of the Plan Suggestions dismissed for the Training Week starting `week`. */
+export function loadDismissals(db: Db, week: string): string[] {
+  return db
+    .select({ suggestionId: planSuggestionDismissals.suggestionId })
+    .from(planSuggestionDismissals)
+    .where(eq(planSuggestionDismissals.week, week))
+    .all()
+    .map((r) => r.suggestionId);
+}
+
+export function saveDismissal(db: Db, week: string, suggestionId: string): void {
+  db.insert(planSuggestionDismissals).values({ week, suggestionId }).onConflictDoNothing().run();
 }

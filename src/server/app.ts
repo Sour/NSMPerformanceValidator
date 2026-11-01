@@ -1,17 +1,13 @@
 import { Hono } from "hono";
-import { easyTrend, type EasyTrend } from "../domain/easyTrend";
-import {
-  repLengthCards,
-  type AnalysedActivity,
-  type AnalysedPlannedWorkout,
-  type RepLengthCard,
-  type RepLengthRun,
-} from "../domain/repProgress";
+import type { EasyTrend } from "../domain/easyTrend";
+import { repLengthCards, type RepLengthCard, type RepLengthRun } from "../domain/repProgress";
 import { thresholdPaces, type ThresholdPaces } from "../domain/thresholdPace";
 import { isLocalDate } from "../domain/localDate";
+import { plannableWeeks } from "../domain/weekPlan";
 import {
   trainingWeek,
   trainingWeekRange,
+  weekStart,
   type TrainingDay,
   type TrainingWeek,
   type TrainingWeekRange,
@@ -19,10 +15,28 @@ import {
 } from "../domain/trainingWeek";
 import { weeklyVolume, type VolumeWeek } from "../domain/weeklyVolume";
 import type { Db } from "./db";
-import { activityAverages, activityStreams, detectedIntervals, intervalsAnalyzedAt, plannedEasyHrTarget, plannedRecovery } from "./intervals";
-import { loadActivities, loadPlannedWorkouts, loadAthleteSettings, loadSyncStatus, type StoredActivity } from "./store";
+import { analysedActivities, analysedPlannedWorkouts, easyRuns, qualityRuns } from "./analysis";
+import { loadPlannedWorkouts, loadAthleteSettings, loadSyncStatus, type StoredActivity, type StoredWeekPlan } from "./store";
 import type { RefetchOutcome } from "./sync";
 import type { SyncRunner } from "./syncRunner";
+import {
+  acceptSuggestion,
+  discardDraft,
+  dismissSuggestion,
+  isPlannable,
+  openWeekPlan,
+  plannerSettings,
+  planResponse,
+  pushWeekPlan,
+  saveDraft,
+  savePlannerSettingsFrom,
+  type PlannerSettingsResponse,
+  type PlanResponse,
+  type PushResponse,
+} from "./plan";
+import { noDestination, type PlanDestination } from "./planDestination";
+
+export type { PlannerSettingsResponse, PlanResponse, PushResponse } from "./plan";
 
 export type WeekActivity = Omit<StoredActivity, "raw" | "intervals" | "streams">;
 /** A Matched Quality Run is Complete or Incomplete; null for other Planned Workouts. */
@@ -41,6 +55,8 @@ export type RefetchResponse = { outcome: "Updated"; run: RepLengthRun } | { outc
 export interface VolumeResponse {
   /** Oldest first; the last is this Training Week. */
   weeks: VolumeWeek[];
+  /** The runner's Quality Share Target, a whole percentage, to draw beside each week's Quality Share. */
+  qualityShareTarget: number;
 }
 export type EasyResponse = EasyTrend;
 export interface ThresholdsResponse extends ThresholdPaces {
@@ -64,6 +80,13 @@ export interface SyncStatusResponse {
   running: boolean;
 }
 
+/** Why `week` cannot be planned on `today`: it is not a Monday, or not the current or next Training Week's. */
+function unplannable(week: string, today: string): { status: 400 | 404; error: string } | null {
+  if (!isLocalDate(week) || weekStart(week) !== week) return { status: 400, error: "week must be a Monday, YYYY-MM-DD" };
+  if (!isPlannable(week, today)) return { status: 404, error: "Only the current and next Training Week can be planned" };
+  return null;
+}
+
 /** Reloads one Activity from intervals.icu; see `refetchActivity`. */
 export type Refetch = (activityId: string) => Promise<RefetchOutcome>;
 
@@ -75,6 +98,7 @@ export function createApp(
   refetch: Refetch = async () => {
     throw new Error("Re-fetch is not available");
   },
+  destination: PlanDestination = noDestination,
 ) {
   const syncStatus = (): SyncStatusResponse => {
     const status = loadSyncStatus(db);
@@ -84,6 +108,12 @@ export function createApp(
       lastError: status?.error ?? null,
       running: syncRunner.running,
     };
+  };
+
+  /** The Week Plan of `week` as of today, opened (and started if new), or why that week cannot be planned. */
+  const openPlan = (week: string): { plan: StoredWeekPlan; date: string } | { status: 400 | 404; error: string } => {
+    const date = today();
+    return unplannable(week, date) ?? { plan: openWeekPlan(db, week, date), date };
   };
 
   return new Hono()
@@ -114,7 +144,10 @@ export function createApp(
     })
     .get("/api/volume", (c) => {
       const planned = loadPlannedWorkouts(db).map(({ raw: _, ...p }) => p);
-      return c.json<VolumeResponse>({ weeks: weeklyVolume(today(), planned, analysedActivities(db)) });
+      return c.json<VolumeResponse>({
+        weeks: weeklyVolume(today(), planned, analysedActivities(db)),
+        qualityShareTarget: plannerSettings(db, today()).qualityShareTarget,
+      });
     })
     .get("/api/easy", (c) => c.json<EasyResponse>(easyRuns(db, today())))
     .get("/api/thresholds", (c) => {
@@ -136,39 +169,52 @@ export function createApp(
       const run = qualityRuns(analysedPlannedWorkouts(db), analysedActivities(db)).find((r) => r.activityId === c.req.param("id"));
       return c.json<RefetchResponse>(run ? { outcome, run } : { outcome: "NotQualityRun" });
     })
+    .get("/api/plan", (c) => {
+      const opened = openPlan(c.req.query("week") ?? plannableWeeks(today()).next);
+      if ("error" in opened) return c.json({ error: opened.error }, opened.status);
+      return c.json<PlanResponse>(planResponse(db, opened.plan, opened.date));
+    })
+    .put("/api/plan/:week", async (c) => {
+      const opened = openPlan(c.req.param("week"));
+      if ("error" in opened) return c.json({ error: opened.error }, opened.status);
+      const saved = saveDraft(db, opened.plan, await c.req.json().catch(() => null), opened.date);
+      if ("error" in saved) return c.json({ error: saved.error }, saved.status);
+      return c.json<PlanResponse>(planResponse(db, saved, opened.date));
+    })
+    .post("/api/plan/:week/discard", (c) => {
+      const opened = openPlan(c.req.param("week"));
+      if ("error" in opened) return c.json({ error: opened.error }, opened.status);
+      return c.json<PlanResponse>(planResponse(db, discardDraft(db, opened.plan, opened.date), opened.date));
+    })
+    .post("/api/plan/:week/suggestions/:id/:action{accept|dismiss}", (c) => {
+      const opened = openPlan(c.req.param("week"));
+      if ("error" in opened) return c.json({ error: opened.error }, opened.status);
+      const act = c.req.param("action") === "accept" ? acceptSuggestion : dismissSuggestion;
+      const result = act(db, opened.plan, opened.date, c.req.param("id"));
+      if (result === null) return c.json({ error: "No such Plan Suggestion is showing for this week" }, 404);
+      if ("error" in result) return c.json({ error: result.error }, result.status);
+      return c.json<PlanResponse>(planResponse(db, result, opened.date));
+    })
+    .post("/api/plan/:week/push", async (c) => {
+      const opened = openPlan(c.req.param("week"));
+      if ("error" in opened) return c.json({ error: opened.error }, opened.status);
+      const body = ((await c.req.json().catch(() => null)) ?? {}) as { replaceNsmApp?: unknown; overwrite?: unknown };
+      const pushed = await pushWeekPlan(db, opened.plan, opened.date, destination, {
+        replaceNsmApp: body.replaceNsmApp === true,
+        overwrite: body.overwrite === true,
+      });
+      if ("status" in pushed) return c.json({ error: pushed.error }, pushed.status);
+      return c.json<PushResponse>(pushed, pushed.outcome === "Failed" ? 502 : 200);
+    })
+    .get("/api/planner-settings", (c) => c.json<PlannerSettingsResponse>(plannerSettings(db, today())))
+    .put("/api/planner-settings", async (c) => {
+      const saved = savePlannerSettingsFrom(db, await c.req.json().catch(() => null));
+      if (!saved) return c.json({ error: "Easy HR Target and Quality Share Target must be whole percentages, low below high" }, 400);
+      return c.json<PlannerSettingsResponse>(plannerSettings(db, today()));
+    })
     .get("/api/sync", (c) => c.json(syncStatus()))
     .post("/api/sync", async (c) => {
       await syncRunner.run();
       return c.json(syncStatus());
     });
-}
-
-/** Every Matched Quality Run with its Reps, across all Rep Lengths. */
-function qualityRuns(planned: AnalysedPlannedWorkout[], activities: AnalysedActivity[]): RepLengthRun[] {
-  return repLengthCards(planned, activities).flatMap((card) => card.runs);
-}
-
-/** Every Matched Easy Run and Long Run with its Easy GAP, Easy HR and Easy Pace, oldest first. */
-function easyRuns(db: Db, today: string): EasyTrend {
-  const planned = loadPlannedWorkouts(db).map(({ raw, ...p }) => ({ ...p, easyHrTarget: plannedEasyHrTarget(raw) }));
-  const activities = loadActivities(db).map(({ raw, intervals: _, streams, ...a }) => ({
-    ...a,
-    ...activityAverages(raw),
-    streams: activityStreams(streams),
-  }));
-  return easyTrend(planned, activities, today, loadAthleteSettings(db).maxHr);
-}
-
-/** Stored Planned Workouts without their raw response, with their planned recovery read. */
-function analysedPlannedWorkouts(db: Db): AnalysedPlannedWorkout[] {
-  return loadPlannedWorkouts(db).map(({ raw, ...p }) => ({ ...p, recovery: plannedRecovery(raw) }));
-}
-
-/** Stored Activities without their raw response, with their detected intervals and when they last changed read. */
-function analysedActivities(db: Db): (AnalysedActivity & Pick<StoredActivity, "distance">)[] {
-  return loadActivities(db).map(({ raw: _, intervals, streams: __, ...a }) => ({
-    ...a,
-    intervals: intervals === null ? null : detectedIntervals(intervals),
-    intervalsChangedAt: intervalsAnalyzedAt(intervals),
-  }));
 }

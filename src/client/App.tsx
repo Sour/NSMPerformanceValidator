@@ -5,19 +5,54 @@ import type { VolumeWeek } from "../domain/weeklyVolume";
 import type {
   EasyResponse,
   ProgressResponse,
-  SyncStatusResponse,
   ThresholdsResponse,
   VolumeResponse,
   WeekActivity,
   WeekResponse,
 } from "../server/app";
+import { getJson } from "./api";
 import { EasyChart } from "./EasyChart";
-import { formatDate, formatDateTime, formatVolume } from "./format";
+import { PlanPage } from "./PlanPage";
+import { navigate, PAGE_PATHS, usePage, type Page } from "./router";
+import { formatDate, formatVolume } from "./format";
 import { RepCards } from "./RepCards";
+import { SyncBar } from "./SyncBar";
 import { ThresholdPaces } from "./ThresholdPaces";
 import { VolumeChart } from "./VolumeChart";
 
 export function App() {
+  const page = usePage();
+  return (
+    <>
+      <nav className="top-nav" aria-label="Pages">
+        {(["Progress", "Plan"] as const).map((p) => (
+          <PageLink key={p} page={p} current={page} />
+        ))}
+      </nav>
+      {page === "Plan" ? <PlanPage /> : <ProgressPage />}
+    </>
+  );
+}
+
+function PageLink({ page, current }: { page: Page; current: Page }) {
+  return (
+    <a
+      href={PAGE_PATHS[page]}
+      aria-current={page === current ? "page" : undefined}
+      onClick={(e) => {
+        // A modified click opens the page elsewhere, as for any link.
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+        e.preventDefault();
+        navigate(page);
+      }}
+    >
+      {page}
+    </a>
+  );
+}
+
+/** Progress: how the runs compare with what was planned. */
+function ProgressPage() {
   const [week, setWeek] = useState<WeekResponse | null>(null);
   const [progress, setProgress] = useState<ProgressResponse | null>(null);
   const [volume, setVolume] = useState<VolumeResponse | null>(null);
@@ -71,7 +106,7 @@ export function App() {
       <RepCards cards={progress.cards} onRefetched={load} />
 
       <h1 className="section-title">Weekly Volume</h1>
-      <VolumeChart weeks={volume.weeks} />
+      <VolumeChart weeks={volume.weeks} qualityShareTarget={volume.qualityShareTarget} />
 
       <h1 className="section-title">Easy Pace</h1>
       <EasyChart easy={easy} />
@@ -139,67 +174,6 @@ export function App() {
   );
 }
 
-/** How often the page checks for syncs it did not start, such as scheduled ones. */
-const SYNC_POLL_MS = 60_000;
-
-/** Shows the latest sync and offers Sync now; calls `onSynced` whenever a sync has finished since the page loaded. */
-function SyncBar({ onSynced }: { onSynced: () => Promise<void> }) {
-  const [status, setStatus] = useState<SyncStatusResponse | null>(null);
-  const [syncing, setSyncing] = useState(false);
-  const [requestError, setRequestError] = useState<string | null>(null);
-  const seenFinishedAt = useRef<string | null | undefined>(undefined);
-
-  async function show(next: SyncStatusResponse) {
-    setStatus(next);
-    const isNewSync = seenFinishedAt.current !== undefined && next.lastFinishedAt !== seenFinishedAt.current;
-    seenFinishedAt.current = next.lastFinishedAt;
-    if (isNewSync) await onSynced();
-  }
-
-  async function request(init?: RequestInit) {
-    try {
-      await show(await getJson<SyncStatusResponse>("/api/sync", init));
-      setRequestError(null);
-    } catch (e) {
-      setRequestError((e as Error).message);
-    }
-  }
-
-  useEffect(() => {
-    void request();
-    const timer = setInterval(() => void request(), SYNC_POLL_MS);
-    return () => clearInterval(timer);
-  }, []);
-
-  async function syncNow() {
-    setSyncing(true);
-    await request({ method: "POST" });
-    setSyncing(false);
-  }
-
-  const running = syncing || status?.running;
-  return (
-    <div className="sync">
-      <span className="sync-time">
-        {running
-          ? "Syncing…"
-          : status?.lastSucceededAt
-            ? `Last synced ${formatDateTime(status.lastSucceededAt)}`
-            : "Not synced yet"}
-      </span>
-      <button type="button" onClick={syncNow} disabled={running}>
-        Sync now
-      </button>
-      {status?.lastError && (
-        <p className="error">
-          Last sync failed {status.lastFinishedAt && formatDateTime(status.lastFinishedAt)}: {status.lastError}
-        </p>
-      )}
-      {requestError && <p className="error">Could not reach the server: {requestError}</p>}
-    </div>
-  );
-}
-
 /**
  * The viewed Training Week's volume, so far when it is this week, against the week before's total.
  * Nothing for an upcoming week.
@@ -232,10 +206,4 @@ function ActivitySummary({ activity }: { activity: WeekActivity }) {
       {minutes} min
     </span>
   );
-}
-
-async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, init);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return (await res.json()) as T;
 }

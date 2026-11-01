@@ -245,6 +245,19 @@ describe("/api/volume", () => {
   });
 });
 
+describe("/api/volume Quality Share Target", () => {
+  it("is the runner's Quality Share Target, 25% until set in the planner settings", async () => {
+    const app = createApp(openDb(":memory:"), () => "2026-10-23", idleRunner());
+    expect(((await (await app.request("/api/volume")).json()) as VolumeResponse).qualityShareTarget).toBe(25);
+    await app.request("/api/planner-settings", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ easyHrTarget: { low: 62, high: 70 }, qualityShareTarget: 20 }),
+    });
+    expect(((await (await app.request("/api/volume")).json()) as VolumeResponse).qualityShareTarget).toBe(20);
+  });
+});
+
 describe("/api/easy", () => {
   /** An Easy Run's or Long Run's structure: one step at `low`–`high`% of Max HR. */
   const easyHrTarget = (low: number, high: number) => ({ steps: [{ hr: { start: low, end: high, units: "%hr", target: "1s" }, duration: 2820 }] });
@@ -295,7 +308,7 @@ describe("/api/easy", () => {
       { finishedAt: "2026-10-23T12:00:00.000Z", syncedThrough: today },
       streamsById,
     );
-    saveAthleteSettings(db, { runThresholdPace: null, maxHr });
+    saveAthleteSettings(db, { runThresholdPace: null, maxHr, lthr: null });
     const app = createApp(db, () => today, idleRunner());
     return (await (await app.request("/api/easy")).json()) as EasyResponse;
   }
@@ -548,7 +561,7 @@ describe("/api/thresholds", () => {
     const before = (await (await app.request("/api/thresholds")).json()) as ThresholdsResponse;
     expect(before.icuThresholdPace).toBeNull();
 
-    saveAthleteSettings(db, { runThresholdPace: 3.0, maxHr: null });
+    saveAthleteSettings(db, { runThresholdPace: 3.0, maxHr: null, lthr: null });
     const after = (await (await app.request("/api/thresholds")).json()) as ThresholdsResponse;
     expect(after.icuThresholdPace).toBe(3.0);
     expect(after.lt2Pace).toBeCloseTo(3.117, 3);

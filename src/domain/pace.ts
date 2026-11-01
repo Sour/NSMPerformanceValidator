@@ -15,3 +15,9 @@ export function formatDuration(seconds: number): string {
   const whole = Math.round(seconds);
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
 }
+
+/** Seconds as h:mm, e.g. 5400 as "1:30"; for planned and run time. */
+export function formatHoursMinutes(seconds: number): string {
+  const minutes = Math.round(seconds / 60);
+  return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
+}

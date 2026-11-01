@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { formatDuration, secondsPerMile } from "../domain/pace";
 import type { RepLengthRun } from "../domain/repProgress";
 import type { RefetchResponse } from "../server/app";
-import { formatDate, formatDateTime, formatText } from "./format";
+import { activityUrl, formatDate, formatDateTime, formatText } from "./format";
 
 /**
  * The run detail drawer for one Quality Run: its Rep GAP and Rep HR, a bar per Rep, a link to the Activity,
@@ -186,8 +186,4 @@ function barWidth(value: number, values: number[]): number {
 function repList(numbers: number[]): string {
   if (numbers.length === 1) return `Rep ${numbers[0]}`;
   return `Reps ${numbers.slice(0, -1).join(", ")} and ${numbers.at(-1)}`;
-}
-
-function activityUrl(activityId: string): string {
-  return `https://intervals.icu/activities/${encodeURIComponent(activityId)}`;
 }

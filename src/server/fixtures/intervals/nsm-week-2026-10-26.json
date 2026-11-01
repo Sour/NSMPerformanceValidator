@@ -1,0 +1,275 @@
+[
+  {
+    "id": 146197568,
+    "start_date_local": "2026-10-26T12:00:00",
+    "category": "WORKOUT",
+    "type": "Run",
+    "name": "2 x 10:00 at 163–177 bpm",
+    "description": "- 10m 62-70% HR hr=1s intensity=warmup press lap\n\n2x\n- 10m 90-98% LTHR hr=1s intensity=active\n- 2m intensity=recovery\n\n- 10m 62-70% HR hr=1s intensity=cooldown press lap\n[NSM]",
+    "moving_time": 2640,
+    "updated": "2026-10-19T14:49:01.413+00:00",
+    "external_id": "nsm-2026-10-26",
+    "workout_doc": {
+      "steps": [
+        {
+          "hr": {
+            "end": 70,
+            "start": 62,
+            "units": "%hr",
+            "target": "1s"
+          },
+          "warmup": true,
+          "duration": 600,
+          "intensity": "warmup",
+          "until_lap_press": true
+        },
+        {
+          "reps": 2,
+          "text": "2x",
+          "steps": [
+            {
+              "hr": {
+                "end": 98,
+                "start": 90,
+                "units": "%lthr",
+                "target": "1s"
+              },
+              "duration": 600,
+              "intensity": "active"
+            },
+            {
+              "duration": 120,
+              "intensity": "recovery"
+            }
+          ],
+          "distance": 0,
+          "duration": 1440
+        },
+        {
+          "hr": {
+            "end": 70,
+            "start": 62,
+            "units": "%hr",
+            "target": "1s"
+          },
+          "cooldown": true,
+          "duration": 600,
+          "intensity": "cooldown",
+          "until_lap_press": true
+        }
+      ],
+      "distance": 0,
+      "duration": 2640
+    },
+    "paired_activity_id": "i201933292"
+  },
+  {
+    "id": 146197569,
+    "start_date_local": "2026-10-27T12:00:00",
+    "category": "WORKOUT",
+    "type": "Run",
+    "name": "Easy Run",
+    "description": "- 47m 62-70% HR hr=1s\n[NSM]",
+    "moving_time": 2820,
+    "updated": "2026-10-19T14:49:01.484+00:00",
+    "external_id": "nsm-2026-10-27",
+    "workout_doc": {
+      "steps": [
+        {
+          "hr": {
+            "end": 70,
+            "start": 62,
+            "units": "%hr",
+            "target": "1s"
+          },
+          "duration": 2820
+        }
+      ],
+      "distance": 0,
+      "duration": 2820
+    },
+    "paired_activity_id": null
+  },
+  {
+    "id": 146197571,
+    "start_date_local": "2026-10-28T12:00:00",
+    "category": "WORKOUT",
+    "type": "Run",
+    "name": "4 x 6:00 at 163–177 bpm",
+    "description": "- 10m 62-70% HR hr=1s intensity=warmup press lap\n\n4x\n- 6m 90-98% LTHR hr=1s intensity=active\n- 1m30s intensity=recovery\n\n- 10m 62-70% HR hr=1s intensity=cooldown press lap\n[NSM]",
+    "moving_time": 3000,
+    "updated": "2026-10-19T14:49:01.554+00:00",
+    "external_id": "nsm-2026-10-28",
+    "workout_doc": {
+      "steps": [
+        {
+          "hr": {
+            "end": 70,
+            "start": 62,
+            "units": "%hr",
+            "target": "1s"
+          },
+          "warmup": true,
+          "duration": 600,
+          "intensity": "warmup",
+          "until_lap_press": true
+        },
+        {
+          "reps": 4,
+          "text": "4x",
+          "steps": [
+            {
+              "hr": {
+                "end": 98,
+                "start": 90,
+                "units": "%lthr",
+                "target": "1s"
+              },
+              "duration": 360,
+              "intensity": "active"
+            },
+            {
+              "duration": 90,
+              "intensity": "recovery"
+            }
+          ],
+          "distance": 0,
+          "duration": 1800
+        },
+        {
+          "hr": {
+            "end": 70,
+            "start": 62,
+            "units": "%hr",
+            "target": "1s"
+          },
+          "cooldown": true,
+          "duration": 600,
+          "intensity": "cooldown",
+          "until_lap_press": true
+        }
+      ],
+      "distance": 0,
+      "duration": 3000
+    },
+    "paired_activity_id": null
+  },
+  {
+    "id": 146197572,
+    "start_date_local": "2026-10-29T12:00:00",
+    "category": "WORKOUT",
+    "type": "Run",
+    "name": "Easy Run",
+    "description": "- 47m 62-70% HR hr=1s\n[NSM]",
+    "moving_time": 2820,
+    "updated": "2026-10-19T14:49:01.605+00:00",
+    "external_id": "nsm-2026-10-29",
+    "workout_doc": {
+      "steps": [
+        {
+          "hr": {
+            "end": 70,
+            "start": 62,
+            "units": "%hr",
+            "target": "1s"
+          },
+          "duration": 2820
+        }
+      ],
+      "distance": 0,
+      "duration": 2820
+    },
+    "paired_activity_id": null
+  },
+  {
+    "id": 146197573,
+    "start_date_local": "2026-10-30T12:00:00",
+    "category": "WORKOUT",
+    "type": "Run",
+    "name": "7 x 3:00 at 163–177 bpm",
+    "description": "- 10m 62-70% HR hr=1s intensity=warmup press lap\n\n7x\n- 3m 90-98% LTHR hr=1s intensity=active\n- 1m intensity=recovery\n\n- 10m 62-70% HR hr=1s intensity=cooldown press lap\n[NSM]",
+    "moving_time": 2880,
+    "updated": "2026-10-19T14:49:01.665+00:00",
+    "external_id": "nsm-2026-10-30",
+    "workout_doc": {
+      "steps": [
+        {
+          "hr": {
+            "end": 70,
+            "start": 62,
+            "units": "%hr",
+            "target": "1s"
+          },
+          "warmup": true,
+          "duration": 600,
+          "intensity": "warmup",
+          "until_lap_press": true
+        },
+        {
+          "reps": 7,
+          "text": "7x",
+          "steps": [
+            {
+              "hr": {
+                "end": 98,
+                "start": 90,
+                "units": "%lthr",
+                "target": "1s"
+              },
+              "duration": 180,
+              "intensity": "active"
+            },
+            {
+              "duration": 60,
+              "intensity": "recovery"
+            }
+          ],
+          "distance": 0,
+          "duration": 1680
+        },
+        {
+          "hr": {
+            "end": 70,
+            "start": 62,
+            "units": "%hr",
+            "target": "1s"
+          },
+          "cooldown": true,
+          "duration": 600,
+          "intensity": "cooldown",
+          "until_lap_press": true
+        }
+      ],
+      "distance": 0,
+      "duration": 2880
+    },
+    "paired_activity_id": null
+  },
+  {
+    "id": 146197574,
+    "start_date_local": "2026-10-31T12:00:00",
+    "category": "WORKOUT",
+    "type": "Run",
+    "name": "Long Run",
+    "description": "- 83m 62-70% HR hr=1s\n[NSM]",
+    "moving_time": 4980,
+    "updated": "2026-10-19T14:49:01.728+00:00",
+    "external_id": "nsm-2026-10-31",
+    "workout_doc": {
+      "steps": [
+        {
+          "hr": {
+            "end": 70,
+            "start": 62,
+            "units": "%hr",
+            "target": "1s"
+          },
+          "duration": 4980
+        }
+      ],
+      "distance": 0,
+      "duration": 4980
+    },
+    "paired_activity_id": null
+  }
+]

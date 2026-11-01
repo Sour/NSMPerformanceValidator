@@ -2,7 +2,9 @@ import type { ActivityStreams } from "../domain/activityStreams";
 import type { EasyAverages, EasyHrTarget } from "../domain/easyTrend";
 import { localDate } from "../domain/localDate";
 import type { Activity, PlannedWorkout } from "../domain/matching";
-import type { DetectedInterval } from "../domain/qualityRun";
+import { qualityRunFormat, type DetectedInterval } from "../domain/qualityRun";
+import { runType } from "../domain/runType";
+import type { WorkoutDay } from "../domain/weekPlan";
 
 /** The fields we read from an intervals.icu calendar event; the full response is kept as raw. */
 export interface IntervalsEvent {
@@ -26,6 +28,38 @@ export interface IntervalsActivity {
   distance: number | null;
   paired_event_id: number | null;
   [field: string]: unknown;
+}
+
+/** Marks a Planned Workout as part of the NSM plan, in its intervals.icu description. */
+export const NSM_TAG = "[NSM]";
+
+/**
+ * Marks the Planned Workouts this app pushed, as the start of their `external_id`. The NSM app's own are
+ * `nsm-<date>`; this one cannot be mistaken for those.
+ */
+const OWNED_EXTERNAL_ID = "nsmpv-";
+
+/** A Planned Workout tagged [NSM]: made by the NSM app, or by this app in its conventions. */
+export function isNsmEvent(e: Pick<IntervalsEvent, "description">): boolean {
+  return e.description?.includes(NSM_TAG) ?? false;
+}
+
+/** A Planned Workout this app pushed, which only this app changes. */
+export function isOwnedEvent(e: { [field: string]: unknown }): boolean {
+  return typeof e.external_id === "string" && e.external_id.startsWith(OWNED_EXTERNAL_ID);
+}
+
+/** The ownership marker of the workout this app pushes for `date`. */
+export function ownedExternalId(date: string): string {
+  return `${OWNED_EXTERNAL_ID}${date}`;
+}
+
+/**
+ * A Planned Workout's version as far as a push is concerned: its date, name and steps. It changes when the workout is
+ * edited on intervals.icu, and not when intervals.icu only pairs an Activity with it.
+ */
+export function eventVersion(e: IntervalsEvent): string {
+  return JSON.stringify([localDate(e.start_date_local), e.name, e.description]);
 }
 
 export function toPlannedWorkout(e: IntervalsEvent): PlannedWorkout {
@@ -60,7 +94,33 @@ interface WorkoutStep {
   hr?: { start?: unknown; end?: unknown; units?: unknown };
   intensity?: string;
   duration?: number;
+  warmup?: boolean;
+  cooldown?: boolean;
   steps?: WorkoutStep[];
+}
+
+/**
+ * A Planned Workout as a Week Plan day, read from its name and `workout_doc`: a Quality Run's Format from the name and
+ * its recovery, warm-up and cool-down from the structure (0 when it has none), or an Easy Run's or Long Run's duration.
+ * Null for a Planned Workout of no Run Type.
+ */
+export function weekPlanDay(event: IntervalsEvent): WorkoutDay | null {
+  const doc = (event as { workout_doc?: { steps?: WorkoutStep[]; duration?: unknown } | null }).workout_doc;
+  const type = runType(event.name);
+  if (type === "Quality Run") {
+    const steps = doc?.steps ?? [];
+    const stepDuration = (s: WorkoutStep | undefined) => (typeof s?.duration === "number" ? s.duration : 0);
+    return {
+      kind: type,
+      ...qualityRunFormat(event.name)!,
+      recovery: plannedRecovery(event) ?? 0,
+      warmUp: stepDuration(steps.find((s) => s.warmup)),
+      coolDown: stepDuration(steps.find((s) => s.cooldown)),
+    };
+  }
+  if (type === null) return null;
+  const duration = typeof doc?.duration === "number" ? doc.duration : Number(event.moving_time ?? 0);
+  return { kind: type, duration };
 }
 
 /**
@@ -141,6 +201,11 @@ export function runMaxHr(athlete: unknown): number | null {
   return positive(runSettings(athlete)?.max_hr);
 }
 
+/** The LTHR of the athlete's Run settings in bpm, read from a `GET /athlete/{id}` response. Null when there is none. */
+export function runLthr(athlete: unknown): number | null {
+  return positive(runSettings(athlete)?.lthr);
+}
+
 /** The sport settings covering Run in a `GET /athlete/{id}` response. */
 function runSettings(athlete: unknown): Record<string, unknown> | undefined {
   const settings = (athlete as { sportSettings?: { types?: unknown }[] } | null)?.sportSettings;
@@ -151,7 +216,7 @@ function positive(value: unknown): number | null {
   return typeof value === "number" && value > 0 ? value : null;
 }
 
-/** Read access to one athlete on intervals.icu. Dates are inclusive YYYY-MM-DD local dates. */
+/** Access to one athlete on intervals.icu. Dates are inclusive YYYY-MM-DD local dates. */
 export interface IntervalsClient {
   events(oldest: string, newest: string): Promise<IntervalsEvent[]>;
   activities(oldest: string, newest: string): Promise<IntervalsActivity[]>;
@@ -161,8 +226,13 @@ export interface IntervalsClient {
   intervals(activityId: string): Promise<unknown>;
   /** One Activity's time, heart-rate and cadence streams; read them with `activityStreams`. */
   streams(activityId: string): Promise<unknown>;
-  /** The athlete with their sport settings; read it with `runThresholdPace` and `runMaxHr`. */
+  /** The athlete with their sport settings; read it with `runThresholdPace`, `runMaxHr` and `runLthr`. */
   athlete(): Promise<unknown>;
+  /** Creates a calendar event, responding with it as stored. */
+  createEvent(event: object): Promise<IntervalsEvent>;
+  /** Replaces the given fields of a calendar event, responding with it as stored. */
+  updateEvent(eventId: number, event: object): Promise<IntervalsEvent>;
+  deleteEvent(eventId: number): Promise<void>;
 }
 
 /** How much of an error response to keep; enough for intervals.icu's message, not a whole HTML page. */
@@ -183,10 +253,19 @@ export function createIntervalsClient(athleteId: string, apiKey: string): Interv
     return res.status === NOT_FOUND ? null : read<T>(path, res);
   }
 
-  function request(path: string, params: Record<string, string> = {}): Promise<Response> {
+  function request(path: string, params: Record<string, string> = {}, init: RequestInit = {}): Promise<Response> {
     const url = new URL(`https://intervals.icu/api/v1/${path}`);
     for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-    return fetch(url, { headers: { authorization, accept: "application/json" } });
+    return fetch(url, { ...init, headers: { authorization, accept: "application/json", "content-type": "application/json" } });
+  }
+
+  async function send<T>(method: "POST" | "PUT", path: string, body: unknown): Promise<T> {
+    return read<T>(path, await request(path, {}, { method, body: JSON.stringify(body) }));
+  }
+
+  async function remove(path: string): Promise<void> {
+    const res = await request(path, {}, { method: "DELETE" });
+    if (!res.ok) throw new Error(`intervals.icu ${path} failed: ${res.status} ${(await res.text()).slice(0, ERROR_BODY_CHARS)}`);
   }
 
   async function read<T>(path: string, res: Response): Promise<T> {
@@ -201,5 +280,8 @@ export function createIntervalsClient(athleteId: string, apiKey: string): Interv
     intervals: (activityId) => get(`activity/${encodeURIComponent(activityId)}/intervals`),
     streams: (activityId) => get(`activity/${encodeURIComponent(activityId)}/streams`, { types: "time,heartrate,cadence" }),
     athlete: () => get(athlete),
+    createEvent: (event) => send("POST", `${athlete}/events`, event),
+    updateEvent: (eventId, event) => send("PUT", `${athlete}/events/${eventId}`, event),
+    deleteEvent: (eventId) => remove(`${athlete}/events/${eventId}`),
   };
 }

@@ -2,21 +2,31 @@ import { addDays, localDate } from "../domain/localDate";
 import { isRun, matchActivities, type Activity, type PlannedWorkout } from "../domain/matching";
 import { runType, type RunType } from "../domain/runType";
 import type { Db } from "./db";
-import { runMaxHr, runThresholdPace, toActivity, toPlannedWorkout, type IntervalsClient } from "./intervals";
+import {
+  eventVersion,
+  isNsmEvent,
+  runLthr,
+  runMaxHr,
+  runThresholdPace,
+  toActivity,
+  toPlannedWorkout,
+  type IntervalsClient,
+  type IntervalsEvent,
+} from "./intervals";
 import {
   deleteActivity,
   loadActivities,
   loadPlannedWorkouts,
   loadSyncStatus,
+  loadWeekPlans,
   recordSyncWithNothingToStore,
   saveActivity,
   saveAthleteSettings,
   saveStreams,
   saveSync,
+  saveWeekPlan,
 } from "./store";
 
-/** Marks a Planned Workout as part of the NSM plan, in its intervals.icu description. */
-const NSM_TAG = "[NSM]";
 /** How far back the first sync looks for the first [NSM] Planned Workout. */
 const FIRST_SYNC_LOOKBACK_DAYS = 365;
 /** How far ahead Planned Workouts are synced. */
@@ -50,7 +60,7 @@ export async function sync(db: Db, client: IntervalsClient, today: string): Prom
   const nsmStart = incremental
     ? storedStart
       : events
-          .filter((e) => e.description?.includes(NSM_TAG))
+          .filter(isNsmEvent)
           .map((e) => localDate(e.start_date_local))
           .sort()[0];
   if (nsmStart === undefined) {
@@ -81,9 +91,28 @@ export async function sync(db: Db, client: IntervalsClient, today: string): Prom
     { finishedAt: new Date().toISOString(), syncedThrough: today },
     streams,
   );
+  flagChangedWeekPlans(db, today);
   await backfillStreams(db, client);
   await syncAthleteSettings(db, client);
   return { nsmStart, plannedWorkouts: planned.length, activities: runningActivities.length };
+}
+
+/**
+ * Flags a Week Plan Changed on intervals.icu when a workout it pushed for a day still to come was edited or deleted
+ * there since. Days that have passed are left alone: their workouts are never pushed again, and pairing an Activity
+ * with one is no edit.
+ */
+function flagChangedWeekPlans(db: Db, today: string): void {
+  const stored = new Map(loadPlannedWorkouts(db).map((p) => [String(p.id), p.raw as IntervalsEvent]));
+  for (const plan of loadWeekPlans(db)) {
+    if (plan.changedOnIntervals) continue;
+    const changed = Object.entries(plan.pushed).some(([date, { eventId, version }]) => {
+      if (date < today || eventId === null) return false;
+      const event = stored.get(eventId);
+      return event === undefined || eventVersion(event) !== version;
+    });
+    if (changed) saveWeekPlan(db, { ...plan, changedOnIntervals: true });
+  }
 }
 
 /** Fetches the streams of stored Easy Runs and Long Runs that have none, such as those stored before streams were. */
@@ -96,13 +125,13 @@ async function backfillStreams(db: Db, client: IntervalsClient): Promise<void> {
 }
 
 /**
- * Stores the intervals.icu Threshold Pace and Max HR from the athlete's Run settings. The Threshold Pace is only a
- * reference beside LT2 Pace, and without Max HR only Easy Pace goes, so a failed request clears them rather than
- * failing the sync.
+ * Stores the intervals.icu Threshold Pace, Max HR and LTHR from the athlete's Run settings. The Threshold Pace is only a
+ * reference beside LT2 Pace, without Max HR only Easy Pace goes, and without LTHR only pushing Quality Runs, so a
+ * failed request clears them rather than failing the sync.
  */
 async function syncAthleteSettings(db: Db, client: IntervalsClient): Promise<void> {
   const athlete = await client.athlete().catch(() => null);
-  saveAthleteSettings(db, { runThresholdPace: runThresholdPace(athlete), maxHr: runMaxHr(athlete) });
+  saveAthleteSettings(db, { runThresholdPace: runThresholdPace(athlete), maxHr: runMaxHr(athlete), lthr: runLthr(athlete) });
 }
 
 /** What a Re-fetch found: the Activity is still Matched to a Quality Run, is no longer, or is gone from intervals.icu. */

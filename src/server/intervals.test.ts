@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { activityAverages, plannedRecovery, runThresholdPace } from "./intervals";
+import type { WeekPlanDay } from "../domain/weekPlan";
+import { activityAverages, plannedRecovery, runLthr, runThresholdPace, weekPlanDay, type IntervalsEvent } from "./intervals";
 
 describe("activityAverages", () => {
   it("is an Activity's whole-run Easy GAP and Easy HR", () => {
@@ -49,6 +50,18 @@ const athlete = JSON.parse(readFileSync(new URL("./fixtures/intervals/athlete.js
   sportSettings: unknown[];
 };
 
+describe("runLthr", () => {
+  it("is the Run sport's LTHR, not another sport's", () => {
+    expect(runLthr(athlete)).toBe(181);
+  });
+
+  it("is null for an athlete with no Run LTHR", () => {
+    expect(runLthr({ sportSettings: [athlete.sportSettings[0]] })).toBeNull();
+    expect(runLthr({ sportSettings: [{ types: ["Run"], lthr: null }] })).toBeNull();
+    expect(runLthr(null)).toBeNull();
+  });
+});
+
 describe("runThresholdPace", () => {
   it("is the Run sport's intervals.icu Threshold Pace, in metres per second though shown per mile (9:03 /mi)", () => {
     expect(runThresholdPace(athlete)).toBe(2.9665275);
@@ -60,5 +73,32 @@ describe("runThresholdPace", () => {
     expect(runThresholdPace({ sportSettings: [{ types: ["Run"], threshold_pace: 0 }] })).toBeNull();
     expect(runThresholdPace({})).toBeNull();
     expect(runThresholdPace(null)).toBeNull();
+  });
+});
+
+/** A recorded week of the NSM app's Planned Workouts (26 Oct 2026), trimmed of load and zone totals. */
+const nsmWeek = JSON.parse(readFileSync(new URL("./fixtures/intervals/nsm-week-2026-10-26.json", import.meta.url), "utf8")) as IntervalsEvent[];
+const nsmEvent = (date: string) => nsmWeek.find((e) => e.start_date_local.startsWith(date))!;
+
+describe("weekPlanDay", () => {
+  it("imports an NSM-app Quality Run with its Format, recovery, warm-up and cool-down", () => {
+    expect(weekPlanDay(nsmEvent("2026-10-26"))).toEqual<WeekPlanDay>({
+      kind: "Quality Run",
+      reps: 2,
+      repLength: 600,
+      recovery: 120,
+      warmUp: 600,
+      coolDown: 600,
+    });
+    expect(weekPlanDay(nsmEvent("2026-10-30"))).toMatchObject({ reps: 7, repLength: 180, recovery: 60 });
+  });
+
+  it("imports an NSM-app Easy Run and Long Run with their durations", () => {
+    expect(weekPlanDay(nsmEvent("2026-10-27"))).toEqual<WeekPlanDay>({ kind: "Easy Run", duration: 47 * 60 });
+    expect(weekPlanDay(nsmEvent("2026-10-31"))).toEqual<WeekPlanDay>({ kind: "Long Run", duration: 83 * 60 });
+  });
+
+  it("is null for a Planned Workout of no Run Type", () => {
+    expect(weekPlanDay({ ...nsmEvent("2026-10-27"), name: "Marathon" })).toBeNull();
   });
 });

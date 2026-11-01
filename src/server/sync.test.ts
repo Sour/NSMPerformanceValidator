@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { openDb } from "./db";
-import type { IntervalsActivity, IntervalsClient, IntervalsEvent } from "./intervals";
-import { loadActivities, loadAthleteSettings, loadPlannedWorkouts, loadSyncStatus, saveSync } from "./store";
+import { eventVersion, type IntervalsActivity, type IntervalsClient, type IntervalsEvent } from "./intervals";
+import {
+  loadActivities,
+  loadAthleteSettings,
+  loadPlannedWorkouts,
+  loadSyncStatus,
+  loadWeekPlan,
+  saveSync,
+  saveWeekPlan,
+  type StoredWeekPlan,
+} from "./store";
 import { refetchActivity, sync } from "./sync";
 
 function event(id: number, date: string, name: string, description = "[NSM]", extra: Partial<IntervalsEvent> = {}): IntervalsEvent {
@@ -40,7 +49,7 @@ type FakeClient = IntervalsClient & { requests: string[] };
 function fakeClient(
   events: IntervalsEvent[],
   activities: IntervalsActivity[],
-  athlete: unknown = { sportSettings: [{ types: ["Run"], threshold_pace: 4.47, max_hr: 201 }] },
+  athlete: unknown = { sportSettings: [{ types: ["Run"], threshold_pace: 4.47, max_hr: 201, lthr: 181 }] },
   intervals: (activityId: string) => unknown = intervalsResponse,
 ): FakeClient {
   const requests: string[] = [];
@@ -72,6 +81,15 @@ function fakeClient(
       requests.push("athlete");
       if (athlete instanceof Error) throw athlete;
       return athlete;
+    },
+    createEvent: async () => {
+      throw new Error("Sync never writes to intervals.icu");
+    },
+    updateEvent: async () => {
+      throw new Error("Sync never writes to intervals.icu");
+    },
+    deleteEvent: async () => {
+      throw new Error("Sync never writes to intervals.icu");
     },
   };
 }
@@ -242,26 +260,26 @@ describe("sync", () => {
     });
   });
 
-  it("stores the intervals.icu Threshold Pace and Max HR from the athlete's Run settings", async () => {
+  it("stores the intervals.icu Threshold Pace, Max HR and LTHR from the athlete's Run settings", async () => {
     const db = openDb(":memory:");
-    expect(loadAthleteSettings(db)).toEqual({ runThresholdPace: null, maxHr: null });
+    expect(loadAthleteSettings(db)).toEqual({ runThresholdPace: null, maxHr: null, lthr: null });
     await sync(db, fakeClient(events, activities), "2026-10-02");
-    expect(loadAthleteSettings(db)).toEqual({ runThresholdPace: 4.47, maxHr: 201 });
+    expect(loadAthleteSettings(db)).toEqual({ runThresholdPace: 4.47, maxHr: 201, lthr: 181 });
   });
 
-  it("clears the intervals.icu Threshold Pace and Max HR, and still succeeds, when the athlete request fails", async () => {
+  it("clears the intervals.icu Threshold Pace, Max HR and LTHR, and still succeeds, when the athlete request fails", async () => {
     const db = openDb(":memory:");
     await sync(db, fakeClient(events, activities), "2026-10-02");
     await sync(db, fakeClient(events, activities, new Error("intervals.icu athlete failed: 500")), "2026-10-03");
-    expect(loadAthleteSettings(db)).toEqual({ runThresholdPace: null, maxHr: null });
+    expect(loadAthleteSettings(db)).toEqual({ runThresholdPace: null, maxHr: null, lthr: null });
     expect(loadSyncStatus(db)).toMatchObject({ error: null, syncedThrough: "2026-10-03" });
   });
 
-  it("clears the intervals.icu Threshold Pace and Max HR once Run has none", async () => {
+  it("clears the intervals.icu Threshold Pace, Max HR and LTHR once Run has none", async () => {
     const db = openDb(":memory:");
     await sync(db, fakeClient(events, activities), "2026-10-02");
     await sync(db, fakeClient(events, activities, { sportSettings: [] }), "2026-10-03");
-    expect(loadAthleteSettings(db)).toEqual({ runThresholdPace: null, maxHr: null });
+    expect(loadAthleteSettings(db)).toEqual({ runThresholdPace: null, maxHr: null, lthr: null });
   });
 
   it("records a sync that found no [NSM] Planned Workout without a synced-through date", async () => {
@@ -339,5 +357,47 @@ describe("refetchActivity", () => {
     expect(loadActivities(db).map((a) => [a.id, a.pairedEventId, a.intervals, a.streams])).toEqual([
       ["i2", 1, null, streamsResponse("i2")],
     ]);
+  });
+});
+
+describe("sync and pushed Week Plans", () => {
+  // This app pushed an Easy Run for Thursday 5 Nov 2026; today is Tuesday 3 Nov.
+  const pushedEvent = event(500, "2026-11-05", "Easy Run", "- 45m 62-70% HR hr=1s\n[NSM]", { external_id: "nsmpv-2026-11-05" });
+  const easy = { kind: "Easy Run", duration: 2700 } as const;
+  const plan = (version = eventVersion(pushedEvent)): StoredWeekPlan => ({
+    week: "2026-11-02",
+    days: Array.from({ length: 7 }, (_, i) => (i === 3 ? easy : { kind: "Rest" as const })),
+    pushed: { "2026-11-05": { day: easy, eventId: "500", version } },
+    pushedAt: "2026-11-01T12:00:00.000Z",
+    changedOnIntervals: false,
+  });
+  const changed = (db: ReturnType<typeof openDb>) => loadWeekPlan(db, "2026-11-02")!.changedOnIntervals;
+
+  it("leaves a Week Plan Pushed while its workouts are as pushed", async () => {
+    const db = openDb(":memory:");
+    saveWeekPlan(db, plan());
+    await sync(db, fakeClient([...events, pushedEvent], activities), "2026-11-03");
+    expect(changed(db)).toBe(false);
+  });
+
+  it("flags a Week Plan Changed on intervals.icu when a pushed workout was edited there", async () => {
+    const db = openDb(":memory:");
+    saveWeekPlan(db, plan());
+    await sync(db, fakeClient([...events, { ...pushedEvent, description: "- 60m 62-70% HR hr=1s\n[NSM]" }], activities), "2026-11-03");
+    expect(changed(db)).toBe(true);
+  });
+
+  it("flags a Week Plan Changed on intervals.icu when a pushed workout was deleted there", async () => {
+    const db = openDb(":memory:");
+    saveWeekPlan(db, plan());
+    await sync(db, fakeClient(events, activities), "2026-11-03");
+    expect(changed(db)).toBe(true);
+  });
+
+  it("ignores a pushed workout whose day has passed, as an Activity being paired with it", async () => {
+    const db = openDb(":memory:");
+    saveWeekPlan(db, plan());
+    await sync(db, fakeClient([...events, { ...pushedEvent, name: "Easy Run (done)" }], activities), "2026-11-06");
+    expect(changed(db)).toBe(false);
   });
 });
