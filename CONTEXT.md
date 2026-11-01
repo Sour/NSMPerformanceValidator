@@ -75,6 +75,10 @@ The week's longest continuous easy-paced run.
 A run that was actually recorded by the watch.
 _Avoid_: Workout, session, run (when the recorded thing is meant)
 
+**Cross-Training**:
+A non-running workout recorded by the watch, such as a ride, a strength session or a hike. It adds to Training Load, and so to Fitness and Fatigue, but it is never an Activity: it cannot be Matched and never counts toward Weekly Volume or any other progress number.
+_Avoid_: Other Activity, non-run, cross-train (as a noun)
+
 **Match**:
 The link between an Activity and the Planned Workout it fulfilled: either intervals.icu's own pairing or, failing that, the Planned Workout on the same day. Only running Activities (intervals.icu types Run, TrailRun and VirtualRun) can be Matched.
 _Avoid_: Pairing (that is intervals.icu's mechanism, one way a Match is made)
@@ -153,6 +157,22 @@ _Avoid_: Quality ratio, intensity target
 **Quality Support**:
 The distance and time of a Quality Run that is not a Rep: its warm-up, cool-down and recoveries. It counts toward Easy Volume.
 _Avoid_: Quality easy, junk miles
+
+**Training Load**:
+What one Activity or Cross-Training workout cost the body, from its heart rate relative to LTHR: an hour at LTHR is 100. It is measured against the LTHR in effect on the day, every sport against the running LTHR, so a workout's Training Load never changes once recorded. Time without heart rate adds nothing; a workout with no heart rate at all has no Training Load and is shown as such.
+_Avoid_: Load (alone), TSS, HRSS, TRIMP, stress score
+
+**Fitness**:
+The long-term average of daily Training Load, weighted toward recent days with a 42-day time constant: how much training the body has absorbed. Every Activity and Cross-Training workout counts; a day without any adds nothing, so Fitness decays.
+_Avoid_: CTL, chronic load, aerobic fitness (Easy Pace answers that)
+
+**Fatigue**:
+The short-term average of daily Training Load, with a 7-day time constant: how much recent training the body is still carrying.
+_Avoid_: ATL, acute load, tiredness
+
+**Form**:
+Fitness minus Fatigue on the same day, that day's workouts included. Negative while training is building; positive when rested.
+_Avoid_: TSB, freshness, readiness
 
 **Training Week**:
 Monday to Sunday, matching how the plan is laid out.
