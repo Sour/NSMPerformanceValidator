@@ -43,6 +43,13 @@
       "when": 1793547723032,
       "tag": "0005_week_plans",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1793551123936,
+      "tag": "0006_cross_training",
+      "breakpoints": true
     }
   ]
 }

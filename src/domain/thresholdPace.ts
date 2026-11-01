@@ -75,12 +75,31 @@ const MIN_RUNS_EACH = 2;
  * the average of what each end of the 90–98% target gives. Null when no Quality Run names a target.
  */
 export function lthr(planned: PlannedWorkout[], today: string): number | null {
-  const latest = planned
-    .filter((p) => p.date <= today && qualityRunFormat(p.name) && heartRateTarget(p.name))
-    .sort((a, b) => a.date.localeCompare(b.date))
+  const latest = targetedQualityRuns(planned)
+    .filter((p) => p.date <= today)
     .at(-1);
-  if (!latest) return null;
-  const { low, high } = heartRateTarget(latest.name)!;
+  return latest ? targetLthr(latest) : null;
+}
+
+/**
+ * The LTHR in effect on `date`: the current LTHR as of that day, or before the first Quality Run naming a target, the
+ * LTHR that one gives. Null when no Quality Run names a target.
+ */
+export function lthrOn(planned: PlannedWorkout[], date: string): number | null {
+  const first = targetedQualityRuns(planned)[0];
+  return lthr(planned, date) ?? (first ? targetLthr(first) : null);
+}
+
+/** The Quality Runs whose names give a heart-rate target, oldest first. */
+function targetedQualityRuns(planned: PlannedWorkout[]): PlannedWorkout[] {
+  return planned
+    .filter((p) => qualityRunFormat(p.name) && heartRateTarget(p.name))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** The LTHR a Quality Run's target gives: the average of what each end of the 90–98% target gives. */
+function targetLthr(p: PlannedWorkout): number {
+  const { low, high } = heartRateTarget(p.name)!;
   return (low / TARGET_LOW + high / TARGET_HIGH) / 2;
 }
 

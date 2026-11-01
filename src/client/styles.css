@@ -170,6 +170,73 @@ h2 {
   overflow-x: auto;
 }
 
+.fitness {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-top: 16px;
+}
+
+.fitness-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.fitness-headline {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.presets {
+  display: flex;
+}
+
+.presets button {
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.presets button + button {
+  border-left: none;
+}
+
+.presets button:first-child {
+  border-radius: 6px 0 0 6px;
+}
+
+.presets button:last-child {
+  border-radius: 0 6px 6px 0;
+}
+
+.presets button[aria-pressed="true"] {
+  color: var(--text);
+  background: var(--border);
+}
+
+.fitness-chart {
+  height: 300px;
+}
+
+.fitness .note {
+  margin: 8px 0 0;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.no-hr-marker {
+  color: var(--missed);
+}
+
 .thresholds {
   display: flex;
   flex-wrap: wrap;

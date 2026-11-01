@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
+import { DEFAULT_FITNESS_RANGE, isFitnessRange, type FitnessRange } from "../domain/fitness";
 import { addDays } from "../domain/localDate";
 import { weekStart } from "../domain/trainingWeek";
 import type { VolumeWeek } from "../domain/weeklyVolume";
 import type {
   EasyResponse,
+  FitnessResponse,
   ProgressResponse,
   ThresholdsResponse,
   VolumeResponse,
@@ -12,13 +14,23 @@ import type {
 } from "../server/app";
 import { getJson } from "./api";
 import { EasyChart } from "./EasyChart";
+import { FitnessChart } from "./FitnessChart";
 import { PlanPage } from "./PlanPage";
 import { navigate, PAGE_PATHS, usePage, type Page } from "./router";
 import { formatDate, formatVolume } from "./format";
 import { RepCards } from "./RepCards";
 import { SyncBar } from "./SyncBar";
 import { ThresholdPaces } from "./ThresholdPaces";
+import { loadViewPreference, saveViewPreference } from "./viewPreference";
 import { VolumeChart } from "./VolumeChart";
+
+const FITNESS_RANGE_PREFERENCE = "fitnessRange";
+
+/** The Fitness range this browser last chose, or 3 months. */
+function rememberedFitnessRange(): FitnessRange {
+  const stored = loadViewPreference(FITNESS_RANGE_PREFERENCE);
+  return stored !== null && isFitnessRange(stored) ? stored : DEFAULT_FITNESS_RANGE;
+}
 
 export function App() {
   const page = usePage();
@@ -58,6 +70,8 @@ function ProgressPage() {
   const [volume, setVolume] = useState<VolumeResponse | null>(null);
   const [easy, setEasy] = useState<EasyResponse | null>(null);
   const [thresholds, setThresholds] = useState<ThresholdsResponse | null>(null);
+  const [fitness, setFitness] = useState<FitnessResponse | null>(null);
+  const [fitnessRange, setFitnessRange] = useState(rememberedFitnessRange);
   const [error, setError] = useState<string | null>(null);
   // A date in the Training Week being viewed; null for the current one. A ref, so reloads after a sync keep the week.
   const viewedWeek = useRef<string | null>(null);
@@ -79,6 +93,21 @@ function ProgressPage() {
     if (to >= week!.earliest && to <= week!.latest) viewWeek(to);
   };
 
+  // The Fitness range being viewed, as a ref too, so a slower response for another range is dropped.
+  const viewedFitnessRange = useRef(fitnessRange);
+  const loadFitness = () => {
+    const range = viewedFitnessRange.current;
+    return getJson<FitnessResponse>(`/api/fitness?range=${range}`).then((f) => {
+      if (viewedFitnessRange.current === range) setFitness(f);
+    });
+  };
+  const viewFitnessRange = (range: FitnessRange) => {
+    viewedFitnessRange.current = range;
+    setFitnessRange(range);
+    saveViewPreference(FITNESS_RANGE_PREFERENCE, range);
+    loadFitness().catch((e: Error) => setError(e.message));
+  };
+
   const load = () =>
     Promise.all([
       loadWeek(),
@@ -86,6 +115,7 @@ function ProgressPage() {
       getJson<VolumeResponse>("/api/volume").then(setVolume),
       getJson<EasyResponse>("/api/easy").then(setEasy),
       getJson<ThresholdsResponse>("/api/thresholds").then(setThresholds),
+      loadFitness(),
     ]).then(() => {});
 
   useEffect(() => {
@@ -93,7 +123,7 @@ function ProgressPage() {
   }, []);
 
   if (error) return <main><p className="error">Could not load: {error}</p></main>;
-  if (!week || !progress || !volume || !easy || !thresholds) return <main><p>Loading…</p></main>;
+  if (!week || !progress || !volume || !easy || !thresholds || !fitness) return <main><p>Loading…</p></main>;
   const isThisWeek = week.today >= week.start && week.today <= week.end;
 
   return (
@@ -107,6 +137,9 @@ function ProgressPage() {
 
       <h1 className="section-title">Weekly Volume</h1>
       <VolumeChart weeks={volume.weeks} qualityShareTarget={volume.qualityShareTarget} />
+
+      <h1 className="section-title">Fitness</h1>
+      <FitnessChart days={fitness.days} range={fitnessRange} onRange={viewFitnessRange} />
 
       <h1 className="section-title">Easy Pace</h1>
       <EasyChart easy={easy} />

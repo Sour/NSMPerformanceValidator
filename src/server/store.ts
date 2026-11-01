@@ -6,6 +6,7 @@ import type { Db } from "./db";
 import {
   activities,
   athleteSettings,
+  crossTraining,
   plannedWorkouts,
   plannerSettings,
   planSuggestionDismissals,
@@ -20,6 +21,8 @@ export type StoredPlannedWorkout = PlannedWorkout & { raw: unknown };
  * was not fetched.
  */
 export type StoredActivity = Activity & { distance: number | null; raw: unknown; intervals: unknown; streams: unknown };
+/** A Cross-Training workout; `streams` is intervals.icu's streams response, null when it was not fetched. */
+export type StoredCrossTraining = Pick<Activity, "id" | "date" | "type" | "name" | "movingTime"> & { raw: unknown; streams: unknown };
 
 export type SyncStatus = Omit<typeof syncStatus.$inferSelect, "id">;
 
@@ -36,10 +39,10 @@ export interface SyncedData {
 }
 
 /**
- * Makes the stored Planned Workouts and Activities dated within `window` exactly those given,
+ * Makes the stored Planned Workouts, Activities and Cross-Training dated within `window` exactly those given,
  * keyed by intervals.icu id, and records the sync as successful.
- * `intervals` and `streams` hold the detected intervals and streams responses fetched for some of the Activities,
- * by Activity id.
+ * `intervals` and `streams` hold the detected intervals and streams responses fetched for some of the Activities and
+ * Cross-Training, by intervals.icu id.
  */
 export function saveSync(
   db: Db,
@@ -49,6 +52,7 @@ export function saveSync(
   intervals: ReadonlyMap<string, unknown>,
   { finishedAt, syncedThrough }: SyncedData,
   streams: ReadonlyMap<string, unknown> = new Map(),
+  crossTrainingWorkouts: IntervalsActivity[] = [],
 ): void {
   db.transaction((tx) => {
     for (const e of events) {
@@ -76,6 +80,19 @@ export function saveSync(
       )
       .run();
 
+    for (const a of crossTrainingWorkouts) {
+      const row = { ...toCrossTraining(a), raw: a, streams: streams.get(a.id) ?? null, syncedAt: finishedAt };
+      tx.insert(crossTraining).values(row).onConflictDoUpdate({ target: crossTraining.id, set: row }).run();
+    }
+    tx.delete(crossTraining)
+      .where(
+        and(
+          between(crossTraining.date, window.from, window.to),
+          notInArray(crossTraining.id, crossTrainingWorkouts.map((a) => a.id)),
+        ),
+      )
+      .run();
+
     writeSyncStatus(tx, { finishedAt, error: null, succeededAt: finishedAt, syncedThrough });
   });
 }
@@ -85,9 +102,10 @@ export function saveActivity(db: Db, activity: IntervalsActivity, fetched: Fetch
   upsertActivity(db, activity, fetched, syncedAt);
 }
 
-/** Stores the streams response of one stored Activity, leaving the rest of it as it is. */
-export function saveStreams(db: Db, activityId: string, streams: unknown): void {
-  db.update(activities).set({ streams }).where(eq(activities.id, activityId)).run();
+/** Stores the streams response of one stored Activity or Cross-Training workout, leaving the rest of it as it is. */
+export function saveStreams(db: Db, id: string, streams: unknown): void {
+  db.update(activities).set({ streams }).where(eq(activities.id, id)).run();
+  db.update(crossTraining).set({ streams }).where(eq(crossTraining.id, id)).run();
 }
 
 /** Removes one stored Activity; nothing happens when it is not stored. */
@@ -206,6 +224,27 @@ export function loadActivities(db: Db): StoredActivity[] {
     .from(activities)
     .orderBy(asc(activities.date), asc(activities.id))
     .all();
+}
+
+export function loadCrossTraining(db: Db): StoredCrossTraining[] {
+  return db
+    .select({
+      id: crossTraining.id,
+      date: crossTraining.date,
+      type: crossTraining.type,
+      name: crossTraining.name,
+      movingTime: crossTraining.movingTime,
+      raw: crossTraining.raw,
+      streams: crossTraining.streams,
+    })
+    .from(crossTraining)
+    .orderBy(asc(crossTraining.date), asc(crossTraining.id))
+    .all();
+}
+
+function toCrossTraining(a: IntervalsActivity): Omit<StoredCrossTraining, "raw" | "streams"> {
+  const { id, date, type, name, movingTime } = toActivity(a);
+  return { id, date, type, name, movingTime };
 }
 
 /** A stored Week Plan: the draft and what pushes made of it. */

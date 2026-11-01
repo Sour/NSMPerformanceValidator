@@ -4,6 +4,7 @@ import { eventVersion, type IntervalsActivity, type IntervalsClient, type Interv
 import {
   loadActivities,
   loadAthleteSettings,
+  loadCrossTraining,
   loadPlannedWorkouts,
   loadSyncStatus,
   loadWeekPlan,
@@ -152,31 +153,78 @@ describe("sync", () => {
     ]);
   });
 
-  it("stores the heart-rate and cadence streams of Matched Easy Runs and Long Runs only", async () => {
+  it("stores the heart-rate and cadence streams of every running Activity and Cross-Training workout", async () => {
     const db = openDb(":memory:");
     const client = fakeClient(events, activities);
     await sync(db, client, "2026-10-02");
-    expect(client.requests.filter((r) => r.startsWith("streams"))).toEqual(["streams i1"]);
+    expect(client.requests.filter((r) => r.startsWith("streams"))).toEqual(["streams i1", "streams i2", "streams walk", "streams lift"]);
     expect(loadActivities(db).map((a) => [a.id, a.streams])).toEqual([
       ["i1", streamsResponse("i1")],
-      ["i2", null],
+      ["i2", streamsResponse("i2")],
+    ]);
+    expect(loadCrossTraining(db).map((a) => [a.id, a.streams])).toEqual([
+      ["walk", streamsResponse("walk")],
+      ["lift", streamsResponse("lift")],
     ]);
   });
 
-  it("fetches the streams of Easy Runs and Long Runs stored without them, however old", async () => {
+  it("fetches the streams of running Activities and Cross-Training stored without them, however old", async () => {
     const db = openDb(":memory:");
-    saveSync(db, { from: "2026-09-01", to: "2026-10-30" }, events.slice(1, 3), activities.slice(1, 3), new Map(), {
-      finishedAt: "2026-10-20T12:00:00.000Z",
-      syncedThrough: "2026-10-20",
-    });
+    saveSync(
+      db,
+      { from: "2026-09-01", to: "2026-10-30" },
+      events.slice(1, 3),
+      activities.slice(0, 3),
+      new Map(),
+      { finishedAt: "2026-10-20T12:00:00.000Z", syncedThrough: "2026-10-20" },
+      new Map(),
+      activities.slice(3),
+    );
     const client = fakeClient(events, activities);
 
     await sync(db, client, "2026-10-21");
 
-    expect(client.requests.filter((r) => r.startsWith("streams"))).toEqual(["streams i1"]);
-    expect(loadActivities(db).find((a) => a.id === "i1")!.streams).toEqual(streamsResponse("i1"));
+    expect(client.requests.filter((r) => r.startsWith("streams"))).toEqual(["streams i0", "streams i1", "streams i2", "streams walk", "streams lift"]);
+    expect(loadActivities(db).find((a) => a.id === "i2")!.streams).toEqual(streamsResponse("i2"));
+    expect(loadCrossTraining(db).find((a) => a.id === "lift")!.streams).toEqual(streamsResponse("lift"));
     await sync(db, client, "2026-10-21");
-    expect(client.requests.filter((r) => r.startsWith("streams"))).toEqual(["streams i1"]);
+    expect(client.requests.filter((r) => r.startsWith("streams"))).toHaveLength(5);
+  });
+
+  it("stores non-running workouts as Cross-Training with raw responses, never as Activities", async () => {
+    const db = openDb(":memory:");
+    await sync(db, fakeClient(events, activities), "2026-10-02");
+    expect(loadCrossTraining(db)).toEqual([
+      { id: "walk", date: "2026-09-30", type: "Walk", name: "Everett Walk", movingTime: 2400, raw: activities[3], streams: streamsResponse("walk") },
+      { id: "lift", date: "2026-10-01", type: "WeightTraining", name: "Everett WeightTraining", movingTime: 2400, raw: activities[4], streams: streamsResponse("lift") },
+    ]);
+    expect(loadActivities(db).map((a) => a.id)).not.toContain("walk");
+  });
+
+  it("drops Cross-Training that intervals.icu no longer returns", async () => {
+    const db = openDb(":memory:");
+    await sync(db, fakeClient(events, activities), "2026-10-02");
+    await sync(db, fakeClient(events, activities.slice(0, 4)), "2026-10-02");
+    expect(loadCrossTraining(db).map((a) => a.id)).toEqual(["walk"]);
+  });
+
+  it("stores Cross-Training whose streams request fails as without streams, still succeeding, and does not ask again", async () => {
+    const db = openDb(":memory:");
+    const client = fakeClient(events, activities);
+    const streams = client.streams;
+    client.streams = async (id) => {
+      if (id === "lift") {
+        client.requests.push(`streams ${id}`);
+        throw new Error("intervals.icu activity/lift/streams failed: 404");
+      }
+      return streams(id);
+    };
+
+    await sync(db, client, "2026-10-02");
+
+    expect(loadCrossTraining(db).find((a) => a.id === "lift")!.streams).toEqual([]);
+    expect(loadSyncStatus(db)).toMatchObject({ error: null });
+    expect(client.requests.filter((r) => r === "streams lift")).toHaveLength(1);
   });
 
   it("is idempotent", async () => {
@@ -216,7 +264,7 @@ describe("sync", () => {
     await sync(db, fakeClient(events, activities), "2026-10-15");
     const client = fakeClient(events, activities);
     await sync(db, client, "2026-10-20");
-    expect(client.requests.filter((r) => !r.startsWith("intervals"))).toEqual([
+    expect(client.requests.filter((r) => !r.startsWith("intervals") && !r.startsWith("streams"))).toEqual([
       "events 2026-10-08..2026-11-17",
       "activities 2026-10-08..2026-10-21",
       "athlete",
@@ -233,6 +281,9 @@ describe("sync", () => {
       "activities 2026-09-29..2026-10-04",
       "intervals i2",
       "streams i1",
+      "streams i2",
+      "streams walk",
+      "streams lift",
       "athlete",
     ]);
   });
@@ -298,7 +349,7 @@ describe("refetchActivity", () => {
   }
   const fixedReps = { analyzed: "2026-11-20T10:00:00Z", icu_intervals: [{ type: "WORK", moving_time: 360, gap: 3.3, average_heartrate: 166 }] };
 
-  it("reloads one Quality Run's Activity and its intervals, whatever its age, and nothing else", async () => {
+  it("reloads one Quality Run's Activity, its intervals and its streams, whatever its age, and nothing else", async () => {
     const db = await synced();
     const plannedBefore = loadPlannedWorkouts(db);
     const renamed = activities.map((a) => (a.id === "i2" ? { ...a, name: "Fixed reps" } : { ...a, name: "Changed" }));
@@ -306,10 +357,10 @@ describe("refetchActivity", () => {
 
     expect(await refetchActivity(db, client, "i2")).toBe("Updated");
 
-    expect(client.requests).toEqual(["activity i2", "intervals i2"]);
-    expect(loadActivities(db).map((a) => [a.id, a.name, a.intervals])).toEqual([
-      ["i1", "Everett - Easy Run", null],
-      ["i2", "Fixed reps", fixedReps],
+    expect(client.requests).toEqual(["activity i2", "intervals i2", "streams i2"]);
+    expect(loadActivities(db).map((a) => [a.id, a.name, a.intervals, a.streams])).toEqual([
+      ["i1", "Everett - Easy Run", null, streamsResponse("i1")],
+      ["i2", "Fixed reps", fixedReps, streamsResponse("i2")],
     ]);
     expect(loadPlannedWorkouts(db)).toEqual(plannedBefore);
   });
@@ -344,7 +395,7 @@ describe("refetchActivity", () => {
     expect(loadActivities(db).map((a) => a.id)).toEqual(["i1"]);
   });
 
-  it("stores an Activity no longer Matched to a Quality Run without its intervals, with streams once it is an Easy Run", async () => {
+  it("stores an Activity no longer Matched to a Quality Run without its intervals", async () => {
     const db = openDb(":memory:");
     const plan = [event(1, "2026-09-29", "Easy Run"), event(2, "2026-09-30", "4 x 6:00 at 163–177 bpm")];
     const run = activity("i2", "2026-09-30", "Run", { paired_event_id: 2 });

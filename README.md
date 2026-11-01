@@ -15,7 +15,7 @@ Optional: `DATABASE_PATH` (default `data/nsm.db`), `PORT` (default `3000`), `SYN
 
 ```
 npm install
-npm run sync    # pull Planned Workouts and running Activities into SQLite once
+npm run sync    # pull Planned Workouts, running Activities and Cross-Training into SQLite once
 npm run dev     # API on :3000, page on Vite's dev server
 ```
 

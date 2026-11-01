@@ -12,6 +12,6 @@ if (result.nsmStart === null) {
   console.log("No Planned Workout tagged [NSM] found; nothing stored.");
 } else {
   console.log(
-    `Synced since ${result.nsmStart}: ${result.plannedWorkouts} Planned Workouts, ${result.activities} running Activities.`,
+    `Synced since ${result.nsmStart}: ${result.plannedWorkouts} Planned Workouts, ${result.activities} running Activities, ${result.crossTraining} Cross-Training workouts.`,
   );
 }

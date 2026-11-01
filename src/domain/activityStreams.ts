@@ -53,12 +53,16 @@ export function shareAbove(streams: ActivityStreams, bpm: number): number | null
 
 /**
  * How long each sample covers: the time since the one before, or for the first sample the time to the next.
- * A sample after a pause in recording covers nothing; neither does a full stop (cadence 0), which is not moving time.
+ * A sample after a pause in recording covers nothing.
  */
-function sampleSeconds({ time, cadence }: ActivityStreams): number[] {
+export function recordedSeconds(time: number[]): number[] {
   return time.map((t, i) => {
     const gap = i === 0 ? (time[1] ?? t) - t : t - time[i - 1]!;
-    const stopped = cadence !== null && cadence[i] === 0;
-    return gap > MAX_SAMPLE_GAP || stopped ? 0 : gap;
+    return gap > MAX_SAMPLE_GAP ? 0 : gap;
   });
+}
+
+/** How long each sample covers, as `recordedSeconds`, but a full stop (cadence 0) covers nothing: it is not moving time. */
+function sampleSeconds({ time, cadence }: ActivityStreams): number[] {
+  return recordedSeconds(time).map((seconds, i) => (cadence !== null && cadence[i] === 0 ? 0 : seconds));
 }

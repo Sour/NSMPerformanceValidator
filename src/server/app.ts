@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { EasyTrend } from "../domain/easyTrend";
+import { DEFAULT_FITNESS_RANGE, FITNESS_RANGES, isFitnessRange, type FitnessDay, type FitnessRange } from "../domain/fitness";
 import { repLengthCards, type RepLengthCard, type RepLengthRun } from "../domain/repProgress";
 import { thresholdPaces, type ThresholdPaces } from "../domain/thresholdPace";
 import { isLocalDate } from "../domain/localDate";
@@ -15,7 +16,7 @@ import {
 } from "../domain/trainingWeek";
 import { weeklyVolume, type VolumeWeek } from "../domain/weeklyVolume";
 import type { Db } from "./db";
-import { analysedActivities, analysedPlannedWorkouts, easyRuns, qualityRuns } from "./analysis";
+import { analysedActivities, analysedPlannedWorkouts, easyRuns, fitness, qualityRuns } from "./analysis";
 import { loadPlannedWorkouts, loadAthleteSettings, loadSyncStatus, type StoredActivity, type StoredWeekPlan } from "./store";
 import type { RefetchOutcome } from "./sync";
 import type { SyncRunner } from "./syncRunner";
@@ -62,6 +63,11 @@ export type EasyResponse = EasyTrend;
 export interface ThresholdsResponse extends ThresholdPaces {
   /** The intervals.icu Threshold Pace in metres per second, a reference beside LT2 Pace; null when none is synced. */
   icuThresholdPace: number | null;
+}
+export interface FitnessResponse {
+  range: FitnessRange;
+  /** One per day of the range through today, oldest first; none before stored history starts, and none without LTHR. */
+  days: FitnessDay[];
 }
 
 /** What the runner has set for the app. */
@@ -150,6 +156,11 @@ export function createApp(
       });
     })
     .get("/api/easy", (c) => c.json<EasyResponse>(easyRuns(db, today())))
+    .get("/api/fitness", (c) => {
+      const range = c.req.query("range") ?? DEFAULT_FITNESS_RANGE;
+      if (!isFitnessRange(range)) return c.json({ error: `range must be one of ${Object.keys(FITNESS_RANGES).join(", ")}` }, 400);
+      return c.json<FitnessResponse>({ range, days: fitness(db, today(), FITNESS_RANGES[range]) });
+    })
     .get("/api/thresholds", (c) => {
       const analysedPlanned = analysedPlannedWorkouts(db);
       const runs = qualityRuns(analysedPlanned, analysedActivities(db));

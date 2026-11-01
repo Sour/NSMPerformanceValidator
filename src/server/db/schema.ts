@@ -22,7 +22,20 @@ export const activities = sqliteTable("activities", {
   raw: text("raw", { mode: "json" }).notNull(),
   /** intervals.icu's detected intervals response; fetched for Matched Quality Runs only. */
   intervals: text("intervals", { mode: "json" }),
-  /** intervals.icu's time, heart-rate and cadence streams response; fetched for Matched Easy Runs and Long Runs only. */
+  /** intervals.icu's time, heart-rate and cadence streams response; null until fetched. */
+  streams: text("streams", { mode: "json" }),
+  syncedAt: text("synced_at").notNull(),
+});
+
+/** Cross-Training workouts as synced from intervals.icu: every recorded workout that is not a running Activity. */
+export const crossTraining = sqliteTable("cross_training", {
+  id: text("id").primaryKey(),
+  date: text("date").notNull(),
+  type: text("type").notNull(),
+  name: text("name").notNull(),
+  movingTime: integer("moving_time").notNull(),
+  raw: text("raw", { mode: "json" }).notNull(),
+  /** intervals.icu's time, heart-rate and cadence streams response; null until fetched. */
   streams: text("streams", { mode: "json" }),
   syncedAt: text("synced_at").notNull(),
 });
