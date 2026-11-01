@@ -4,6 +4,7 @@ import type { PlanSuggestion } from "../domain/planSuggestions";
 import {
   plannedQualityShare,
   plannedRepTime,
+  plannedTime,
   weekPlannedTime,
   type WeekPlanDay,
   type WeekPlanStatus,
@@ -165,20 +166,25 @@ export function PlanPage() {
 
       <ol className="days">
         {plan.days.map((d, i) => (
-          <li key={d.date} className={d.date === plan.today ? "day today" : "day"}>
-            <h2>{formatDate(d.date, true)}</h2>
+          <li key={d.date} className={`day plan-day${d.date === plan.today ? " today" : ""}${d.editable ? "" : " frozen"}`}>
+            <header>
+              <h2>{formatDate(d.date, true)}</h2>
+              {d.day.kind !== "Rest" && <span className="day-time">{formatDuration(plannedTime(d.day))}</span>}
+              {d.editable && d.day.kind !== "Rest" && (
+                <MoveTo
+                  targets={editableDates.filter((date) => date !== d.date)}
+                  onMove={(date) => {
+                    const j = plan.days.findIndex((x) => x.date === date);
+                    const moved = [...days];
+                    [moved[i], moved[j]] = [moved[j]!, moved[i]!];
+                    edit(moved);
+                  }}
+                />
+              )}
+              {!d.editable && <span className="range">past</span>}
+            </header>
             {d.editable ? (
-              <DayEditor
-                day={d.day}
-                moveTargets={editableDates.filter((date) => date !== d.date)}
-                onChange={(day) => edit(days.map((x, j) => (j === i ? day : x)))}
-                onMove={(date) => {
-                  const j = plan.days.findIndex((x) => x.date === date);
-                  const moved = [...days];
-                  [moved[i], moved[j]] = [moved[j]!, moved[i]!];
-                  edit(moved);
-                }}
-              />
+              <DayEditor day={d.day} onChange={(day) => edit(days.map((x, j) => (j === i ? day : x)))} />
             ) : (
               <p className="rest">{describe(d.day)}</p>
             )}
@@ -308,67 +314,73 @@ function Summary({ plan }: { plan: PlanResponse }) {
   );
 }
 
-function DayEditor({
-  day,
-  moveTargets,
-  onChange,
-  onMove,
-}: {
-  day: WeekPlanDay;
-  moveTargets: string[];
-  onChange: (day: WeekPlanDay) => void;
-  onMove: (date: string) => void;
-}) {
+function DayEditor({ day, onChange }: { day: WeekPlanDay; onChange: (day: WeekPlanDay) => void }) {
   return (
-    <div className="plan-day">
-      <select aria-label="Run Type" value={day.kind} onChange={(e) => onChange(dayOfKind(e.target.value as Kind, day))}>
-        {KINDS.map((k) => (
-          <option key={k} value={k}>
-            {k === "Rest" ? "Rest day" : k}
-          </option>
-        ))}
-      </select>
+    <div className="plan-fields">
+      <Field label="Run Type" wide>
+        <select value={day.kind} onChange={(e) => onChange(dayOfKind(e.target.value as Kind, day))}>
+          {KINDS.map((k) => (
+            <option key={k} value={k}>
+              {k === "Rest" ? "Rest day" : k}
+            </option>
+          ))}
+        </select>
+      </Field>
       {day.kind === "Quality Run" && (
         <>
-          <label>
+          <Field label="Reps">
             <input
               type="number"
               min={1}
               value={day.reps}
-              aria-label="Reps"
               onChange={(e) => Number(e.target.value) >= 1 && onChange({ ...day, reps: Math.round(Number(e.target.value)) })}
             />
-            ×
-          </label>
+          </Field>
           <DurationField label="Rep Length" seconds={day.repLength} min={1} onChange={(repLength) => onChange({ ...day, repLength })} />
-          <DurationField label="recovery" seconds={day.recovery} onChange={(recovery) => onChange({ ...day, recovery })} />
-          <DurationField label="warm-up" seconds={day.warmUp} onChange={(warmUp) => onChange({ ...day, warmUp })} />
-          <DurationField label="cool-down" seconds={day.coolDown} onChange={(coolDown) => onChange({ ...day, coolDown })} />
+          <DurationField label="Recovery" seconds={day.recovery} onChange={(recovery) => onChange({ ...day, recovery })} />
+          <DurationField label="Warm-up (est.)" seconds={day.warmUp} onChange={(warmUp) => onChange({ ...day, warmUp })} />
+          <DurationField label="Cool-down (est.)" seconds={day.coolDown} onChange={(coolDown) => onChange({ ...day, coolDown })} />
+          <p className="field-note">
+            Warm-up and cool-down end when you press lap; their times are estimates for the planned total.
+          </p>
         </>
       )}
       {(day.kind === "Easy Run" || day.kind === "Long Run") && (
-        <label>
+        <Field label="Duration (min)">
           <input
             type="number"
             min={1}
             value={Math.round(day.duration / 60)}
-            aria-label="Duration in minutes"
             onChange={(e) => Number(e.target.value) >= 1 && onChange({ ...day, duration: Math.round(Number(e.target.value)) * 60 })}
           />
-          min
-        </label>
-      )}
-      {day.kind !== "Rest" && moveTargets.length > 0 && (
-        <select aria-label="Move to" value="" onChange={(e) => e.target.value && onMove(e.target.value)}>
-          <option value="">Move to…</option>
-          {moveTargets.map((date) => (
-            <option key={date} value={date}>
-              {formatDate(date, true)}
-            </option>
-          ))}
-        </select>
+        </Field>
       )}
     </div>
+  );
+}
+
+/** One labelled value of a day, its label above it. */
+function Field({ label, wide = false, children }: { label: string; wide?: boolean; children: React.ReactNode }) {
+  return (
+    <label className={wide ? "field wide" : "field"}>
+      <span className="field-label">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+/** Moves a day's workout to another day that can still be edited, swapping it with what is there. */
+function MoveTo({ targets, onMove }: { targets: string[]; onMove: (date: string) => void }) {
+  if (targets.length === 0) return null;
+  return (
+    <select className="move-to" aria-label="Move to" value="" onChange={(e) => e.target.value && onMove(e.target.value)}>
+      <option value="">Move to…</option>
+      {targets.map((date) => (
+        <option key={date} value={date}>
+          {formatDate(date, true)}
+        </option>
+      ))}
+    </select>
   );
 }
 
@@ -395,18 +407,17 @@ function DurationField({
     }
   };
   return (
-    <label>
+    <Field label={label}>
       <input
         className="duration"
         value={text}
-        aria-label={label}
         inputMode="numeric"
+        placeholder="m:ss"
         onChange={(e) => setText(e.target.value)}
         onBlur={commit}
         onKeyDown={(e) => e.key === "Enter" && commit()}
       />
-      {label}
-    </label>
+    </Field>
   );
 }
 
@@ -422,7 +433,7 @@ function parseDuration(text: string): number | null {
 function describe(day: WeekPlanDay): string {
   switch (day.kind) {
     case "Quality Run":
-      return `${day.reps} × ${formatDuration(day.repLength)}, ${formatDuration(day.recovery)} rec · ${formatDuration(day.warmUp)} warm-up · ${formatDuration(day.coolDown)} cool-down`;
+      return `${day.reps} × ${formatDuration(day.repLength)}, ${formatDuration(day.recovery)} rec · warm-up and cool-down to lap press`;
     case "Easy Run":
     case "Long Run":
       return `${day.kind} · ${Math.round(day.duration / 60)} min`;

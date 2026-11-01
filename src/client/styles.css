@@ -624,23 +624,56 @@ h2 {
   color: var(--missed);
 }
 
-.plan-day {
+.plan-day header {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 6px 12px;
+  gap: 12px;
+  margin-bottom: 10px;
 }
 
-.plan-day label {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+.plan-day header h2 {
+  margin: 0;
+  margin-right: auto;
+}
+
+.plan-day.frozen header {
+  margin-bottom: 4px;
+}
+
+.day-time {
   color: var(--muted);
   font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
 }
 
-.plan-day input,
-.plan-day select,
+.plan-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  gap: 10px 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.field.wide {
+  grid-column: span 2;
+}
+
+.field-label {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.plan-fields input,
+.plan-fields select,
+.move-to,
 .planner-settings input,
 .actions button {
   font: inherit;
@@ -648,16 +681,28 @@ h2 {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 2px 6px;
+  padding: 4px 8px;
 }
 
-.plan-day input[type="number"] {
-  width: 3.5em;
-}
-
-.plan-day input.duration {
-  width: 4em;
+.plan-fields input,
+.plan-fields select {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg);
   font-variant-numeric: tabular-nums;
+}
+
+.field-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.move-to {
+  font-size: 0.875rem;
+  padding: 2px 6px;
+  color: var(--muted);
 }
 
 .actions {
