@@ -4,27 +4,34 @@ import { runType } from "../domain/runType";
 import type { Db } from "./db";
 import {
   eventVersion,
+  hasSpeedStream,
   isNsmEvent,
   runLthr,
   runMaxHr,
   runThresholdPace,
   toActivity,
   toPlannedWorkout,
+  wellnessFitness,
   type IntervalsClient,
   type IntervalsEvent,
 } from "./intervals";
 import {
   deleteActivity,
+  historyStart,
   loadActivities,
   loadCrossTraining,
+  loadFitnessStart,
   loadPlannedWorkouts,
+  loadSyncBackfills,
   loadSyncStatus,
   loadWeekPlans,
   recordSyncWithNothingToStore,
   saveActivity,
   saveAthleteSettings,
+  saveFitnessStart,
   saveStreams,
   saveSync,
+  saveSyncBackfills,
   saveWeekPlan,
 } from "./store";
 
@@ -45,9 +52,11 @@ export interface SyncResult {
 
 /**
  * Pulls Planned Workouts, running Activities and Cross-Training since the first [NSM] Planned Workout
- * from intervals.icu and stores them with their raw responses, and every workout's streams for its Training Load.
+ * from intervals.icu and stores them with their raw responses, and every workout's streams for its Training Load,
+ * and Fitness and Fatigue from before then to start ours from.
  * `today` is a YYYY-MM-DD local date.
- * Once a sync has stored data, later ones only re-fetch from shortly before it.
+ * Once a sync has stored data, later ones only re-fetch from shortly before it, except that Cross-Training is fetched
+ * from the first [NSM] Planned Workout until it has been once, as it was not synced before.
  * Until a Planned Workout is tagged [NSM], stored data is left as it is.
  */
 export async function sync(db: Db, client: IntervalsClient, today: string): Promise<SyncResult> {
@@ -72,8 +81,11 @@ export async function sync(db: Db, client: IntervalsClient, today: string): Prom
   }
 
   const planned = events.filter((e) => localDate(e.start_date_local) >= nsmStart);
-  const recorded = await client.activities(laterDate(from, nsmStart), addDays(today, 1));
-  const runningActivities = recorded.filter(isRun);
+  const windowStart = laterDate(from, nsmStart);
+  const syncedCrossTrainingFrom = loadSyncBackfills(db).crossTrainingFrom;
+  const crossTrainingFrom = syncedCrossTrainingFrom !== null && syncedCrossTrainingFrom <= nsmStart ? windowStart : nsmStart;
+  const recorded = await client.activities(crossTrainingFrom, addDays(today, 1));
+  const runningActivities = recorded.filter((a) => isRun(a) && localDate(a.start_date_local) >= windowStart);
   const crossTraining = recorded.filter((a) => !isRun(a));
 
   const plannedWorkouts = planned.map(toPlannedWorkout);
@@ -95,10 +107,13 @@ export async function sync(db: Db, client: IntervalsClient, today: string): Prom
     { finishedAt: new Date().toISOString(), syncedThrough: today },
     streams,
     crossTraining,
+    crossTrainingFrom,
   );
+  saveSyncBackfills(db, { crossTrainingFrom: nsmStart });
   flagChangedWeekPlans(db, today);
-  await backfillStreams(db, client);
+  await backfillStreams(db, client, new Set(streams.keys()));
   await syncAthleteSettings(db, client);
+  await syncFitnessStart(db, client);
   return { nsmStart, plannedWorkouts: planned.length, activities: runningActivities.length, crossTraining: crossTraining.length };
 }
 
@@ -122,11 +137,20 @@ function flagChangedWeekPlans(db: Db, today: string): void {
 
 /**
  * Fetches the streams of stored Activities and Cross-Training that have none, such as those stored before every
- * workout's streams were.
+ * workout's streams were. Once, it also re-fetches those stored without a speed stream, from before streams were
+ * fetched with speed, except the ones `fetched` just now; a Cross-Training workout whose request fails keeps its own.
  */
-async function backfillStreams(db: Db, client: IntervalsClient): Promise<void> {
-  for (const { id, streams } of loadActivities(db)) if (streams === null) saveStreams(db, id, await client.streams(id));
-  for (const { id, streams } of loadCrossTraining(db)) if (streams === null) saveStreams(db, id, await crossTrainingStreams(client, id));
+async function backfillStreams(db: Db, client: IntervalsClient, fetched: ReadonlySet<string>): Promise<void> {
+  const { speedStreams } = loadSyncBackfills(db);
+  const due = ({ id, streams }: { id: string; streams: unknown }) =>
+    streams === null || (!speedStreams && !fetched.has(id) && !hasSpeedStream(streams));
+  for (const a of loadActivities(db)) if (due(a)) saveStreams(db, a.id, await client.streams(a.id));
+  for (const c of loadCrossTraining(db)) {
+    if (!due(c)) continue;
+    const streams = c.streams === null ? await crossTrainingStreams(client, c.id) : await client.streams(c.id).catch(() => c.streams);
+    saveStreams(db, c.id, streams);
+  }
+  saveSyncBackfills(db, { speedStreams: true });
 }
 
 /**
@@ -145,6 +169,22 @@ async function crossTrainingStreams(client: IntervalsClient, id: string): Promis
 async function syncAthleteSettings(db: Db, client: IntervalsClient): Promise<void> {
   const athlete = await client.athlete().catch(() => null);
   saveAthleteSettings(db, { runThresholdPace: runThresholdPace(athlete), maxHr: runMaxHr(athlete), lthr: runLthr(athlete) });
+}
+
+/**
+ * Stores intervals.icu's Fitness and Fatigue at the end of the day before stored history starts, for ours to start
+ * from, unless they are stored for that day or an earlier one: they are kept, so ours still start there after leaving
+ * intervals.icu, and only stored history starting earlier replaces them. Without them ours start from zero, so a failed
+ * request stores none, to ask again next sync.
+ */
+async function syncFitnessStart(db: Db, client: IntervalsClient): Promise<void> {
+  const start = historyStart(db);
+  if (start === null) return;
+  const date = addDays(start, -1);
+  const stored = loadFitnessStart(db);
+  if (stored !== null && stored.date <= date) return;
+  const fetched = wellnessFitness(await client.wellness(date).catch(() => null));
+  if (fetched !== null) saveFitnessStart(db, { date, ...fetched });
 }
 
 /** What a Re-fetch found: the Activity is still Matched to a Quality Run, is no longer, or is gone from intervals.icu. */

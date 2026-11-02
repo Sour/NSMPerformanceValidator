@@ -5,10 +5,14 @@ import {
   loadActivities,
   loadAthleteSettings,
   loadCrossTraining,
+  loadFitnessStart,
   loadPlannedWorkouts,
   loadSyncStatus,
   loadWeekPlan,
+  saveFitnessStart,
+  saveStreams,
   saveSync,
+  saveSyncBackfills,
   saveWeekPlan,
   type StoredWeekPlan,
 } from "./store";
@@ -44,14 +48,16 @@ type FakeClient = IntervalsClient & { requests: string[] };
 
 /**
  * Serves the given data by date range or id, recording each request as "events oldest..newest", "activity id",
- * "intervals id", "streams id" or "athlete". `athlete` is the athlete response, or an Error to fail that request with;
- * `intervals` gives each Activity's intervals response, or throws to fail that request.
+ * "intervals id", "streams id", "athlete" or "wellness date". `athlete` is the athlete response, or an Error to fail
+ * that request with; `intervals` gives each Activity's intervals response and `wellness` each day's wellness response,
+ * or throws to fail that request.
  */
 function fakeClient(
   events: IntervalsEvent[],
   activities: IntervalsActivity[],
   athlete: unknown = { sportSettings: [{ types: ["Run"], threshold_pace: 4.47, max_hr: 201, lthr: 181 }] },
   intervals: (activityId: string) => unknown = intervalsResponse,
+  wellness: (date: string) => unknown = wellnessResponse,
 ): FakeClient {
   const requests: string[] = [];
   const within = (oldest: string, newest: string) => (x: { start_date_local: string }) =>
@@ -83,6 +89,10 @@ function fakeClient(
       if (athlete instanceof Error) throw athlete;
       return athlete;
     },
+    wellness: async (date) => {
+      requests.push(`wellness ${date}`);
+      return wellness(date);
+    },
     createEvent: async () => {
       throw new Error("Sync never writes to intervals.icu");
     },
@@ -104,7 +114,17 @@ function streamsResponse(activityId: string) {
     { type: "time", data: [0, 1, 2], name: activityId },
     { type: "heartrate", data: [130, 131, 132] },
     { type: "cadence", data: [80, 81, 80] },
+    { type: "velocity_smooth", data: [2.5, 2.6, 2.5] },
   ];
+}
+
+/** As stored before streams were fetched with speed. */
+function streamsWithoutSpeed(activityId: string) {
+  return streamsResponse(activityId).filter((s) => s.type !== "velocity_smooth");
+}
+
+function wellnessResponse(date: string) {
+  return { id: date, ctl: 28.1, atl: 22.4, restingHR: 50 };
 }
 
 const events = [
@@ -180,6 +200,7 @@ describe("sync", () => {
       new Map(),
       activities.slice(3),
     );
+    saveSyncBackfills(db, { crossTrainingFrom: "2026-09-29", speedStreams: true });
     const client = fakeClient(events, activities);
 
     await sync(db, client, "2026-10-21");
@@ -337,6 +358,122 @@ describe("sync", () => {
     const db = openDb(":memory:");
     await sync(db, fakeClient([events[0]!], activities), "2026-10-02");
     expect(loadSyncStatus(db)).toMatchObject({ error: null, succeededAt: expect.any(String), syncedThrough: null });
+  });
+});
+
+describe("sync after an upgrade", () => {
+  /** Synced through 20 Oct 2026 before Cross-Training was, so the walk and lift of 30 Sep and 1 Oct are not stored. */
+  function syncedBeforeCrossTraining() {
+    const db = openDb(":memory:");
+    saveSync(
+      db,
+      { from: "2026-09-29", to: "2026-11-17" },
+      events.slice(1, 3),
+      activities.slice(1, 3),
+      new Map(),
+      { finishedAt: "2026-10-20T12:00:00.000Z", syncedThrough: "2026-10-20" },
+      new Map([
+        ["i1", streamsWithoutSpeed("i1")],
+        ["i2", streamsWithoutSpeed("i2")],
+      ]),
+    );
+    return db;
+  }
+  const lateWalk = activity("late-walk", "2026-10-25", "Walk");
+
+  it("stores every Cross-Training workout from the first day of stored history, with its streams, once", async () => {
+    const db = syncedBeforeCrossTraining();
+    const client = fakeClient(events, [...activities, lateWalk]);
+
+    await sync(db, client, "2026-10-26");
+
+    expect(client.requests).toContain("activities 2026-09-29..2026-10-27");
+    expect(loadCrossTraining(db).map((a) => [a.id, a.streams])).toEqual([
+      ["walk", streamsResponse("walk")],
+      ["lift", streamsResponse("lift")],
+      ["late-walk", streamsResponse("late-walk")],
+    ]);
+
+    const next = fakeClient(events, [...activities, lateWalk]);
+    await sync(db, next, "2026-10-27");
+    expect(next.requests.filter((r) => r.startsWith("activities"))).toEqual(["activities 2026-10-19..2026-10-28"]);
+    expect(loadCrossTraining(db).map((a) => a.id)).toEqual(["walk", "lift", "late-walk"]);
+  });
+
+  it("leaves running Activities and Planned Workouts from before the re-fetched window as they were", async () => {
+    const db = syncedBeforeCrossTraining();
+    const before = { planned: loadPlannedWorkouts(db), activities: loadActivities(db).map(({ streams: _, ...a }) => a) };
+    const client = fakeClient(events, [...activities, lateWalk]);
+
+    await sync(db, client, "2026-10-26");
+
+    expect(client.requests.filter((r) => r.startsWith("events") || r.startsWith("intervals"))).toEqual(["events 2026-10-13..2026-11-23"]);
+    expect({ planned: loadPlannedWorkouts(db), activities: loadActivities(db).map(({ streams: _, ...a }) => a) }).toEqual(before);
+  });
+
+  it("re-fetches, once, stored streams without a speed stream", async () => {
+    const db = syncedBeforeCrossTraining();
+    const client = fakeClient(events, activities);
+
+    await sync(db, client, "2026-10-26");
+
+    expect(loadActivities(db).map((a) => a.streams)).toEqual([streamsResponse("i1"), streamsResponse("i2")]);
+    expect(client.requests.filter((r) => r === "streams i1" || r === "streams i2")).toEqual(["streams i1", "streams i2"]);
+
+    // intervals.icu has no speed for some workouts, such as a lift, so theirs still have none after.
+    for (const id of ["i1", "i2"]) saveStreams(db, id, streamsWithoutSpeed(id));
+    const next = fakeClient(events, activities);
+    await sync(db, next, "2026-10-27");
+    expect(next.requests.filter((r) => r.startsWith("streams"))).toEqual([]);
+  });
+});
+
+describe("sync of the Fitness starting point", () => {
+  it("stores intervals.icu's Fitness and Fatigue for the day before stored history, once", async () => {
+    const db = openDb(":memory:");
+    const client = fakeClient(events, activities);
+    await sync(db, client, "2026-10-02");
+    expect(client.requests.filter((r) => r.startsWith("wellness"))).toEqual(["wellness 2026-09-28"]);
+    expect(loadFitnessStart(db)).toEqual({ date: "2026-09-28", fitness: 28.1, fatigue: 22.4 });
+
+    const later = fakeClient(events, activities, undefined, undefined, (date) => ({ id: date, ctl: 99, atl: 99 }));
+    await sync(db, later, "2026-10-03");
+    expect(later.requests.filter((r) => r.startsWith("wellness"))).toEqual([]);
+    expect(loadFitnessStart(db)).toEqual({ date: "2026-09-28", fitness: 28.1, fatigue: 22.4 });
+  });
+
+  it("stores none, still succeeding, when the wellness request fails or has no Fitness, and asks again next time", async () => {
+    const db = openDb(":memory:");
+    const failing = () => {
+      throw new Error("intervals.icu wellness failed: 500");
+    };
+    await sync(db, fakeClient(events, activities, undefined, undefined, failing), "2026-10-02");
+    expect(loadFitnessStart(db)).toBeNull();
+    expect(loadSyncStatus(db)).toMatchObject({ error: null, syncedThrough: "2026-10-02" });
+
+    await sync(db, fakeClient(events, activities, undefined, undefined, (date) => ({ id: date, ctl: null, atl: null })), "2026-10-03");
+    expect(loadFitnessStart(db)).toBeNull();
+
+    await sync(db, fakeClient(events, activities), "2026-10-04");
+    expect(loadFitnessStart(db)).toEqual({ date: "2026-09-28", fitness: 28.1, fatigue: 22.4 });
+  });
+
+  it("keeps the stored one when stored history now starts later than it is for", async () => {
+    const db = openDb(":memory:");
+    saveFitnessStart(db, { date: "2026-09-20", fitness: 30, fatigue: 25 });
+    const client = fakeClient(events, activities);
+    await sync(db, client, "2026-10-02");
+    expect(client.requests.filter((r) => r.startsWith("wellness"))).toEqual([]);
+    expect(loadFitnessStart(db)).toEqual({ date: "2026-09-20", fitness: 30, fatigue: 25 });
+  });
+
+  it("fetches a new one when stored history now starts earlier than the stored one is for", async () => {
+    const db = openDb(":memory:");
+    saveFitnessStart(db, { date: "2026-10-05", fitness: 30, fatigue: 25 });
+    const client = fakeClient(events, activities);
+    await sync(db, client, "2026-10-06");
+    expect(client.requests.filter((r) => r.startsWith("wellness"))).toEqual(["wellness 2026-09-28"]);
+    expect(loadFitnessStart(db)).toEqual({ date: "2026-09-28", fitness: 28.1, fatigue: 22.4 });
   });
 });
 

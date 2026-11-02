@@ -6,6 +6,8 @@ export interface ActivityStreams {
   heartrate: (number | null)[] | null;
   /** Cadence per foot, as intervals.icu gives it (80 is 160 steps/min); null when not recorded. */
   cadence: (number | null)[] | null;
+  /** Speed in metres per second, 0 when stopped; null when not recorded, as for weight training. */
+  velocity: (number | null)[] | null;
 }
 
 /** Below 130 steps/min, 65 per foot, the runner is walking. */
@@ -55,7 +57,7 @@ export function shareAbove(streams: ActivityStreams, bpm: number): number | null
  * How long each sample covers: the time since the one before, or for the first sample the time to the next.
  * A sample after a pause in recording covers nothing.
  */
-export function recordedSeconds(time: number[]): number[] {
+function recordedSeconds(time: number[]): number[] {
   return time.map((t, i) => {
     const gap = i === 0 ? (time[1] ?? t) - t : t - time[i - 1]!;
     return gap > MAX_SAMPLE_GAP ? 0 : gap;

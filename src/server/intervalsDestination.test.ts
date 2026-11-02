@@ -150,6 +150,7 @@ function fakeCalendar(events: IntervalsEvent[], fail: (write: string) => boolean
     intervals: unused,
     streams: unused,
     athlete: async () => ({}),
+    wellness: unused,
     createEvent: async (payload) => {
       const p = payload as ReturnType<typeof workoutEvent>;
       write(`create ${p.start_date_local.slice(0, 10)}`);

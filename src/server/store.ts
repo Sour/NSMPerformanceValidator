@@ -1,5 +1,6 @@
 import { and, asc, between, eq, notInArray } from "drizzle-orm";
 import type { EasyHrTarget } from "../domain/easyTrend";
+import type { FitnessStart } from "../domain/fitness";
 import type { Activity, PlannedWorkout } from "../domain/matching";
 import type { PushedDay, WeekPlanDay } from "../domain/weekPlan";
 import type { Db } from "./db";
@@ -7,9 +8,11 @@ import {
   activities,
   athleteSettings,
   crossTraining,
+  fitnessStart,
   plannedWorkouts,
   plannerSettings,
   planSuggestionDismissals,
+  syncBackfills,
   syncStatus,
   weekPlans,
 } from "./db/schema";
@@ -39,10 +42,10 @@ export interface SyncedData {
 }
 
 /**
- * Makes the stored Planned Workouts, Activities and Cross-Training dated within `window` exactly those given,
- * keyed by intervals.icu id, and records the sync as successful.
- * `intervals` and `streams` hold the detected intervals and streams responses fetched for some of the Activities and
- * Cross-Training, by intervals.icu id.
+ * Makes the stored Planned Workouts and Activities dated within `window`, and the Cross-Training dated from
+ * `crossTrainingFrom` through its end, exactly those given, keyed by intervals.icu id, and records the sync as
+ * successful. `intervals` and `streams` hold the detected intervals and streams responses fetched for some of the
+ * Activities and Cross-Training, by intervals.icu id.
  */
 export function saveSync(
   db: Db,
@@ -53,6 +56,7 @@ export function saveSync(
   { finishedAt, syncedThrough }: SyncedData,
   streams: ReadonlyMap<string, unknown> = new Map(),
   crossTrainingWorkouts: IntervalsActivity[] = [],
+  crossTrainingFrom: string = window.from,
 ): void {
   db.transaction((tx) => {
     for (const e of events) {
@@ -87,7 +91,7 @@ export function saveSync(
     tx.delete(crossTraining)
       .where(
         and(
-          between(crossTraining.date, window.from, window.to),
+          between(crossTraining.date, crossTrainingFrom, window.to),
           notInArray(crossTraining.id, crossTrainingWorkouts.map((a) => a.id)),
         ),
       )
@@ -162,6 +166,49 @@ export function loadSyncStatus(db: Db): SyncStatus | null {
       .where(eq(syncStatus.id, SYNC_STATUS_ID))
       .get() ?? null
   );
+}
+
+const SYNC_BACKFILLS_ID = 1;
+
+/** The one-off catch-ups sync has done for data stored before it fetched it. */
+export type SyncBackfills = Omit<typeof syncBackfills.$inferSelect, "id">;
+
+export function loadSyncBackfills(db: Db): SyncBackfills {
+  const row = db.select().from(syncBackfills).where(eq(syncBackfills.id, SYNC_BACKFILLS_ID)).get();
+  return { crossTrainingFrom: row?.crossTrainingFrom ?? null, speedStreams: row?.speedStreams ?? false };
+}
+
+/** Records the given catch-ups as done, leaving the others as they are. */
+export function saveSyncBackfills(db: Db, done: Partial<SyncBackfills>): void {
+  const row = { id: SYNC_BACKFILLS_ID, ...loadSyncBackfills(db), ...done };
+  db.insert(syncBackfills).values(row).onConflictDoUpdate({ target: syncBackfills.id, set: row }).run();
+}
+
+const FITNESS_START_ID = 1;
+
+export function loadFitnessStart(db: Db): FitnessStart | null {
+  return (
+    db
+      .select({ date: fitnessStart.date, fitness: fitnessStart.fitness, fatigue: fitnessStart.fatigue })
+      .from(fitnessStart)
+      .where(eq(fitnessStart.id, FITNESS_START_ID))
+      .get() ?? null
+  );
+}
+
+export function saveFitnessStart(db: Db, start: FitnessStart): void {
+  const row = { id: FITNESS_START_ID, ...start };
+  db.insert(fitnessStart).values(row).onConflictDoUpdate({ target: fitnessStart.id, set: row }).run();
+}
+
+/** The first day of stored history: the earliest stored Planned Workout, Activity or Cross-Training; null when none. */
+export function historyStart(db: Db): string | null {
+  const firsts = [
+    db.select({ date: plannedWorkouts.date }).from(plannedWorkouts).orderBy(asc(plannedWorkouts.date)).limit(1).get(),
+    db.select({ date: activities.date }).from(activities).orderBy(asc(activities.date)).limit(1).get(),
+    db.select({ date: crossTraining.date }).from(crossTraining).orderBy(asc(crossTraining.date)).limit(1).get(),
+  ];
+  return firsts.flatMap((row) => (row ? [row.date] : [])).sort()[0] ?? null;
 }
 
 const ATHLETE_SETTINGS_ID = 1;

@@ -81,15 +81,6 @@ export function lthr(planned: PlannedWorkout[], today: string): number | null {
   return latest ? targetLthr(latest) : null;
 }
 
-/**
- * The LTHR in effect on `date`: the current LTHR as of that day, or before the first Quality Run naming a target, the
- * LTHR that one gives. Null when no Quality Run names a target.
- */
-export function lthrOn(planned: PlannedWorkout[], date: string): number | null {
-  const first = targetedQualityRuns(planned)[0];
-  return lthr(planned, date) ?? (first ? targetLthr(first) : null);
-}
-
 /** The Quality Runs whose names give a heart-rate target, oldest first. */
 function targetedQualityRuns(planned: PlannedWorkout[]): PlannedWorkout[] {
   return planned

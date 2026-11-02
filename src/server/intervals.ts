@@ -1,9 +1,11 @@
 import type { ActivityStreams } from "../domain/activityStreams";
 import type { EasyAverages, EasyHrTarget } from "../domain/easyTrend";
+import type { FitnessStart } from "../domain/fitness";
 import { localDate } from "../domain/localDate";
 import type { Activity, PlannedWorkout } from "../domain/matching";
 import { qualityRunFormat, type DetectedInterval } from "../domain/qualityRun";
 import { runType } from "../domain/runType";
+import type { LoadedWorkout } from "../domain/trainingLoad";
 import type { WorkoutDay } from "../domain/weekPlan";
 
 /** The fields we read from an intervals.icu calendar event; the full response is kept as raw. */
@@ -86,6 +88,25 @@ export function activityAverages(activity: unknown): EasyAverages {
   return {
     easyGap: typeof a.gap === "number" && a.gap > 0 ? a.gap : null,
     easyHr: typeof a.average_heartrate === "number" ? a.average_heartrate : null,
+  };
+}
+
+/**
+ * What intervals.icu recorded with an Activity or Cross-Training workout to score its Training Load against, read from
+ * its activity response: the LTHR, Max HR, resting HR and Threshold Pace of that sport's settings at the time, and its
+ * moving time and average GAP. Each null when not recorded; a GAP of zero, as from a treadmill run, is not recorded.
+ */
+export function recordedLoadInputs(activity: unknown): Omit<LoadedWorkout, "running" | "streams"> {
+  const a = (activity ?? {}) as Record<string, unknown>;
+  return {
+    movingTime: positive(a.moving_time) ?? 0,
+    gap: positive(a.gap),
+    thresholds: {
+      lthr: positive(a.lthr),
+      maxHr: positive(a.athlete_max_hr),
+      restingHr: positive(a.icu_resting_hr),
+      thresholdPace: positive(a.threshold_pace),
+    },
   };
 }
 
@@ -175,7 +196,7 @@ export function intervalsAnalyzedAt(response: unknown): string | null {
 
 /**
  * An Activity's streams, read from its `GET /activity/{id}/streams` response. Null when it has no time stream, as when
- * it was not fetched; a heart-rate or cadence stream not recorded is null on its own.
+ * it was not fetched; a heart-rate, cadence or speed stream not recorded is null on its own.
  */
 export function activityStreams(response: unknown): ActivityStreams | null {
   const list = Array.isArray(response) ? (response as { type?: unknown; data?: unknown }[]) : [];
@@ -185,7 +206,21 @@ export function activityStreams(response: unknown): ActivityStreams | null {
   };
   const time = stream("time");
   if (time === null || time.some((t) => t === null)) return null;
-  return { time: time as number[], heartrate: stream("heartrate"), cadence: stream("cadence") };
+  return { time: time as number[], heartrate: stream("heartrate"), cadence: stream("cadence"), velocity: stream("velocity_smooth") };
+}
+
+/** Whether a stored streams response was fetched with a speed stream, which Training Load leaves stopped time out by. */
+export function hasSpeedStream(response: unknown): boolean {
+  return Array.isArray(response) && response.some((s: { type?: unknown }) => s?.type === "velocity_smooth");
+}
+
+/**
+ * Fitness and Fatigue at the end of a day, read from intervals.icu's `GET /athlete/{id}/wellness/{date}` response: its
+ * `ctl` and `atl`. Null when it has either missing.
+ */
+export function wellnessFitness(response: unknown): Omit<FitnessStart, "date"> | null {
+  const w = (response ?? {}) as { ctl?: unknown; atl?: unknown };
+  return typeof w.ctl === "number" && typeof w.atl === "number" ? { fitness: w.ctl, fatigue: w.atl } : null;
 }
 
 /**
@@ -224,10 +259,12 @@ export interface IntervalsClient {
   activity(activityId: string): Promise<IntervalsActivity | null>;
   /** The intervals intervals.icu detected in one Activity; read it with `detectedIntervals`. */
   intervals(activityId: string): Promise<unknown>;
-  /** One Activity's time, heart-rate and cadence streams; read them with `activityStreams`. */
+  /** One Activity's time, heart-rate, cadence and speed streams; read them with `activityStreams`. */
   streams(activityId: string): Promise<unknown>;
   /** The athlete with their sport settings; read it with `runThresholdPace`, `runMaxHr` and `runLthr`. */
   athlete(): Promise<unknown>;
+  /** The athlete's wellness record for one day; read its Fitness and Fatigue with `wellnessFitness`. */
+  wellness(date: string): Promise<unknown>;
   /** Creates a calendar event, responding with it as stored. */
   createEvent(event: object): Promise<IntervalsEvent>;
   /** Replaces the given fields of a calendar event, responding with it as stored. */
@@ -238,6 +275,8 @@ export interface IntervalsClient {
 /** How much of an error response to keep; enough for intervals.icu's message, not a whole HTML page. */
 const ERROR_BODY_CHARS = 200;
 const NOT_FOUND = 404;
+/** The streams fetched for every Activity and Cross-Training workout. */
+const STREAM_TYPES = "time,heartrate,cadence,velocity_smooth";
 
 export function createIntervalsClient(athleteId: string, apiKey: string): IntervalsClient {
   const athlete = `athlete/${encodeURIComponent(athleteId)}`;
@@ -278,8 +317,9 @@ export function createIntervalsClient(athleteId: string, apiKey: string): Interv
     activities: (oldest, newest) => get(`${athlete}/activities`, { oldest, newest }),
     activity: (activityId) => getIfFound(`activity/${encodeURIComponent(activityId)}`),
     intervals: (activityId) => get(`activity/${encodeURIComponent(activityId)}/intervals`),
-    streams: (activityId) => get(`activity/${encodeURIComponent(activityId)}/streams`, { types: "time,heartrate,cadence" }),
+    streams: (activityId) => get(`activity/${encodeURIComponent(activityId)}/streams`, { types: STREAM_TYPES }),
     athlete: () => get(athlete),
+    wellness: (date) => get(`${athlete}/wellness/${encodeURIComponent(date)}`),
     createEvent: (event) => send("POST", `${athlete}/events`, event),
     updateEvent: (eventId, event) => send("PUT", `${athlete}/events/${eventId}`, event),
     deleteEvent: (eventId) => remove(`${athlete}/events/${eventId}`),

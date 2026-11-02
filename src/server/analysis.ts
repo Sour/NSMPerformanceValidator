@@ -1,12 +1,27 @@
 import { easyTrend, type EasyPlannedWorkout, type EasyTrend } from "../domain/easyTrend";
 import { fitnessDays, type FitnessDay } from "../domain/fitness";
 import { addDays } from "../domain/localDate";
-import { lthrOn } from "../domain/thresholdPace";
 import { trainingLoad } from "../domain/trainingLoad";
 import { repLengthCards, type AnalysedActivity, type AnalysedPlannedWorkout, type RepLengthRun } from "../domain/repProgress";
 import type { Db } from "./db";
-import { activityAverages, activityStreams, detectedIntervals, intervalsAnalyzedAt, plannedEasyHrTarget, plannedRecovery } from "./intervals";
-import { loadActivities, loadAthleteSettings, loadCrossTraining, loadPlannedWorkouts, type StoredActivity } from "./store";
+import {
+  activityAverages,
+  activityStreams,
+  detectedIntervals,
+  intervalsAnalyzedAt,
+  plannedEasyHrTarget,
+  plannedRecovery,
+  recordedLoadInputs,
+} from "./intervals";
+import {
+  historyStart,
+  loadActivities,
+  loadAthleteSettings,
+  loadCrossTraining,
+  loadFitnessStart,
+  loadPlannedWorkouts,
+  type StoredActivity,
+} from "./store";
 
 /** Every Matched Quality Run with its Reps, across all Rep Lengths. */
 export function qualityRuns(planned: AnalysedPlannedWorkout[], activities: AnalysedActivity[]): RepLengthRun[] {
@@ -45,17 +60,22 @@ export function analysedActivities(db: Db): (AnalysedActivity & Pick<StoredActiv
 
 /**
  * Fitness, Fatigue and Form for each of the `days` days through `today`, from the Training Load of every Activity and
- * Cross-Training workout, each measured against the LTHR in effect on its day. A workout whose streams are not fetched
- * yet is left out until they are. Empty while no Quality Run names a target, or without stored history; never earlier
- * than the first day of stored history.
+ * Cross-Training workout, each scored against the thresholds intervals.icu recorded with it. They start from the
+ * Fitness and Fatigue stored for a day before stored history, or from zero without one. A workout whose streams are
+ * not fetched yet is left out until they are. Empty without stored history; never earlier than its first day.
  */
 export function fitness(db: Db, today: string, days: number): FitnessDay[] {
-  const planned = loadPlannedWorkouts(db);
-  const workouts = [...loadActivities(db), ...loadCrossTraining(db)];
-  const historyStart = [...planned, ...workouts].map((w) => w.date).sort()[0];
-  if (historyStart === undefined || lthrOn(planned, today) === null) return [];
-  const scored = workouts
+  const start = historyStart(db);
+  if (start === null) return [];
+  const scored = [
+    ...loadActivities(db).map((w) => ({ ...w, running: true })),
+    ...loadCrossTraining(db).map((w) => ({ ...w, running: false })),
+  ]
     .filter((w) => w.streams !== null)
-    .map((w) => ({ date: w.date, trainingLoad: trainingLoad(activityStreams(w.streams), lthrOn(planned, w.date)!) }));
-  return fitnessDays(scored, historyStart, addDays(today, 1 - days), today);
+    .map((w) => ({
+      date: w.date,
+      trainingLoad: trainingLoad({ running: w.running, ...recordedLoadInputs(w.raw), streams: activityStreams(w.streams) }),
+    }));
+  const stored = loadFitnessStart(db);
+  return fitnessDays(scored, start, stored !== null && stored.date < start ? stored : null, addDays(today, 1 - days), today);
 }

@@ -39,7 +39,7 @@ One timed work interval of a Quality Run, run at the planned heart-rate target (
 _Avoid_: Interval, lap, set
 
 **LTHR**:
-The runner's lactate-threshold (LT2) heart rate, the anchor of every Quality Run's heart-rate target. It is read from the Planned Workouts rather than set separately: a Rep's target is 90–98% of LTHR, so LTHR follows the plan. New Planned Workouts take their LTHR from the runner's intervals.icu Run settings when they are planned. The current LTHR is the one given by the most recent Quality Run's target, and it is the one every LT1 Pace and LT2 Pace is measured against, past weeks included.
+The runner's lactate-threshold (LT2) heart rate, the anchor of every Quality Run's heart-rate target. It is read from the Planned Workouts rather than set separately: a Rep's target is 90–98% of LTHR, so LTHR follows the plan. New Planned Workouts take their LTHR from the runner's intervals.icu Run settings when they are planned. The current LTHR is the one given by the most recent Quality Run's target, and it is the one every LT1 Pace and LT2 Pace is measured against, past weeks included. Training Load does not use it: it uses the recorded LTHR, the one intervals.icu recorded with each workout from that sport's settings at the time.
 _Avoid_: LT2 HR, threshold HR, max HR
 
 **LT1 HR**:
@@ -55,7 +55,7 @@ A Quality Run in which at least one Rep's average heart rate exceeded the top of
 _Avoid_: Too hard, red zone
 
 **Max HR**:
-The runner's maximum heart rate, as recorded in intervals.icu. It anchors the Easy HR Target.
+The runner's maximum heart rate, as recorded in intervals.icu. It anchors the Easy HR Target. HR Load uses the recorded Max HR, the one intervals.icu recorded with each workout for its sport.
 _Avoid_: Peak HR
 
 **Easy HR Target**:
@@ -128,7 +128,7 @@ What LT1 Pace and LT2 Pace show for a Training Week whose recent runs cannot sup
 _Avoid_: No data, unknown
 
 **intervals.icu Threshold Pace**:
-The threshold pace in the runner's intervals.icu Run settings. It is shown only as a reference beside LT2 Pace, so the runner can see when that setting is out of date; it never feeds the estimate.
+The threshold pace in the runner's intervals.icu Run settings. It is shown only as a reference beside LT2 Pace, so the runner can see when that setting is out of date; it never feeds the estimate. Pace Load uses the one intervals.icu recorded with each run.
 
 **Weekly Volume**:
 Total running distance and time in a Training Week, across all Run Types. It is split into exactly two parts, Quality Volume and Easy Volume, because the NSM signal is how little of the week is run hard.
@@ -159,11 +159,19 @@ The distance and time of a Quality Run that is not a Rep: its warm-up, cool-down
 _Avoid_: Quality easy, junk miles
 
 **Training Load**:
-What one Activity or Cross-Training workout cost the body, from its heart rate relative to LTHR: an hour at LTHR is 100. It is measured against the LTHR in effect on the day, every sport against the running LTHR, so a workout's Training Load never changes once recorded. Time without heart rate adds nothing; a workout with no heart rate at all has no Training Load and is shown as such.
-_Avoid_: Load (alone), TSS, HRSS, TRIMP, stress score
+What one Activity or Cross-Training workout cost the body, worked out as the runner's intervals.icu Sport Settings say: a running Activity's Pace Load when it has a GAP, otherwise its HR Load; Cross-Training's HR Load. Each is a whole number, scored against the thresholds intervals.icu recorded with that workout for its sport, so a workout's Training Load never changes once recorded. A workout with neither, as without heart rate or without its recorded thresholds, has no Training Load and is shown as one without heart rate.
+_Avoid_: Load (alone), TSS, stress score
+
+**Pace Load**:
+A running Activity's Training Load from its pace: moving time in hours × (its average GAP ÷ the intervals.icu Threshold Pace recorded with it)² × 100, so an hour at that pace is 100. GAP is intervals.icu's.
+_Avoid_: rTSS, TSS
+
+**HR Load**:
+A workout's Training Load from its heart rate: Banister's TRIMP over its heart-rate samples, against the TRIMP of an hour at LTHR, which is 100 (intervals.icu's HRSS). LTHR, Max HR and resting HR are those intervals.icu recorded with the workout for its sport; resting HR is the runner's resting heart rate there. Samples without heart rate, and stopped ones when the workout records speed, add nothing.
+_Avoid_: hrTSS, TRIMP (alone)
 
 **Fitness**:
-The long-term average of daily Training Load, weighted toward recent days with a 42-day time constant: how much training the body has absorbed. Every Activity and Cross-Training workout counts; a day without any adds nothing, so Fitness decays.
+The long-term average of daily Training Load, weighted toward recent days with a 42-day time constant: how much training the body has absorbed. Every Activity and Cross-Training workout counts; a day without any adds nothing, so Fitness decays. Fitness and Fatigue start from intervals.icu's values on the day before stored history, kept locally; without them, from zero, and Fitness is settling for its first 42 days.
 _Avoid_: CTL, chronic load, aerobic fitness (Easy Pace answers that)
 
 **Fatigue**:

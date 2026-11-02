@@ -1,5 +1,7 @@
 # Training Load, Fitness, Fatigue and Form are computed here, not read from intervals.icu
 
+_Superseded in part by [ADR 0006](0006-training-load-mirrors-intervals-sport-settings.md): Training Load is no longer an LTHR-anchored heart-rate load against the running LTHR, and Fitness no longer starts from zero. Computing it all here still stands._
+
 intervals.icu already works out a daily `ctl` / `atl` and a per-activity `icu_training_load`, and reading them would replicate its fitness graph exactly. We compute our own instead, because the runner means to leave intervals.icu (see the Garmin research in #45), and numbers it computes would vanish with it. Training Load is an LTHR-anchored heart-rate load (an hour at LTHR is 100), built only from heart-rate samples and LTHR, which any future data source will provide; Fitness, Fatigue and Form follow intervals.icu's model (42-day and 7-day exponentially weighted averages, Form the same-day difference) so the two graphs can be checked against each other while both exist.
 
 ## Consequences

@@ -22,7 +22,7 @@ export const activities = sqliteTable("activities", {
   raw: text("raw", { mode: "json" }).notNull(),
   /** intervals.icu's detected intervals response; fetched for Matched Quality Runs only. */
   intervals: text("intervals", { mode: "json" }),
-  /** intervals.icu's time, heart-rate and cadence streams response; null until fetched. */
+  /** intervals.icu's time, heart-rate, cadence and speed streams response; null until fetched. */
   streams: text("streams", { mode: "json" }),
   syncedAt: text("synced_at").notNull(),
 });
@@ -35,7 +35,7 @@ export const crossTraining = sqliteTable("cross_training", {
   name: text("name").notNull(),
   movingTime: integer("moving_time").notNull(),
   raw: text("raw", { mode: "json" }).notNull(),
-  /** intervals.icu's time, heart-rate and cadence streams response; null until fetched. */
+  /** intervals.icu's time, heart-rate, cadence and speed streams response; null until fetched. */
   streams: text("streams", { mode: "json" }),
   syncedAt: text("synced_at").notNull(),
 });
@@ -50,6 +50,27 @@ export const syncStatus = sqliteTable("sync_status", {
   succeededAt: text("succeeded_at"),
   /** The local date of the last successful sync that stored data; later syncs re-fetch only from shortly before it. */
   syncedThrough: text("synced_through"),
+});
+
+/** One-off catch-ups sync has done for data stored before it fetched it; a single row with id 1. */
+export const syncBackfills = sqliteTable("sync_backfills", {
+  id: integer("id").primaryKey(),
+  /** The date from which every Cross-Training workout has been synced; null until it has been. */
+  crossTrainingFrom: text("cross_training_from"),
+  /** Every stored workout's streams have been fetched with a speed stream where intervals.icu has one. */
+  speedStreams: integer("speed_streams", { mode: "boolean" }).notNull().default(false),
+});
+
+/**
+ * Fitness and Fatigue as intervals.icu had them at the end of the day before stored history starts, which ours start
+ * from; fetched once and kept. A single row with id 1.
+ */
+export const fitnessStart = sqliteTable("fitness_start", {
+  id: integer("id").primaryKey(),
+  /** YYYY-MM-DD. */
+  date: text("date").notNull(),
+  fitness: real("fitness").notNull(),
+  fatigue: real("fatigue").notNull(),
 });
 
 /** What the latest sync read from the athlete's intervals.icu settings; a single row with id 1. */

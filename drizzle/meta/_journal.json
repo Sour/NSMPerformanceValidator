@@ -50,6 +50,13 @@
       "when": 1793551123936,
       "tag": "0006_cross_training",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1793595390904,
+      "tag": "0007_fitness_start",
+      "breakpoints": true
     }
   ]
 }

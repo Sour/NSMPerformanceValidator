@@ -50,7 +50,7 @@ export function FitnessChart({
           ))}
         </div>
       </div>
-      {latest ? <FitnessLines days={days} /> : <p className="rest">No Fitness yet: it needs synced workouts and an LTHR</p>}
+      {latest ? <FitnessLines days={days} /> : <p className="rest">No Fitness yet: it needs synced workouts</p>}
       {lastSettling && (
         <p className="note">
           Settling until {formatDate(addDays(lastSettling.date, 1))}: Fitness starts from zero when stored history does, so the
