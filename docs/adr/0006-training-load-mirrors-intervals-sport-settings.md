@@ -6,7 +6,7 @@ ADR 0005's reasoning still holds: the numbers are computed here from inputs stor
 
 ## Consequences
 
-- Both formulas were checked against the runner's 42 workouts from 2026-09-29 to 2026-11-01 and matched intervals.icu within its rounding, and Fatigue then matched intervals.icu's every day. Fitness did not quite: intervals.icu leaves WeightTraining out of Fitness (it counts toward Fatigue only), while every workout counts toward ours.
+- Both formulas were checked against the runner's 42 workouts from 2026-09-29 to 2026-11-01 and matched intervals.icu within its rounding, and Fatigue then matched intervals.icu's every day. Fitness did not quite: intervals.icu leaves WeightTraining out of Fitness (it counts toward Fatigue only; its wellness `ctlLoad` and `atlLoad` differ by just those sessions). Ours now leaves WeightTraining out of Fitness too, and fed those workouts' loads gives intervals.icu's Fitness and Fatigue every day.
 - Streams are fetched with speed (`velocity_smooth`) so stopped time can be left out of HR Load; streams stored without it were re-fetched once.
 - Training Load no longer depends on Quality Run targets, so the graph draws without a Quality Run naming one. A workout without its recorded thresholds has no Training Load.
 - Pace Load uses intervals.icu's GAP. Replacing it, and the recorded thresholds, when leaving intervals.icu belongs with the Garmin research (#45).

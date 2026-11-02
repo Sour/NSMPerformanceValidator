@@ -5,7 +5,7 @@ import { localDate } from "../domain/localDate";
 import type { Activity, PlannedWorkout } from "../domain/matching";
 import { qualityRunFormat, type DetectedInterval } from "../domain/qualityRun";
 import { runType } from "../domain/runType";
-import type { LoadedWorkout } from "../domain/trainingLoad";
+import type { LoadedWorkout, PlannedHrTarget, PlannedStep } from "../domain/trainingLoad";
 import type { WorkoutDay } from "../domain/weekPlan";
 
 /** The fields we read from an intervals.icu calendar event; the full response is kept as raw. */
@@ -171,6 +171,29 @@ export function plannedEasyHrTarget(event: unknown): EasyHrTarget | null {
     return null;
   };
   return find(doc?.steps ?? []);
+}
+
+const HR_TARGET_UNITS: Record<string, PlannedHrTarget["units"]> = { "%hr": "%hr", "%lthr": "%lthr", bpm: "bpm" };
+
+/**
+ * A Planned Workout's steps with their heart-rate targets, read from an intervals.icu calendar event's `workout_doc`:
+ * a step with `reps` is a repeat group. A step's target is null when it has none in heart rate, as a recovery, and its
+ * duration null when not given in seconds. Empty without a `workout_doc`.
+ */
+export function plannedSteps(event: unknown): PlannedStep[] {
+  const doc = (event as { workout_doc?: { steps?: WorkoutStep[] } | null } | null)?.workout_doc;
+  const read = (steps: WorkoutStep[]): PlannedStep[] =>
+    steps.map((s) => {
+      if (typeof s.reps === "number") return { kind: "repeat", reps: s.reps, steps: read(s.steps ?? []) };
+      const { start, end, units } = s.hr ?? {};
+      const known = typeof units === "string" ? HR_TARGET_UNITS[units] : undefined;
+      return {
+        kind: "step",
+        duration: typeof s.duration === "number" ? s.duration : null,
+        target: known && typeof start === "number" && typeof end === "number" ? { low: start, high: end, units: known } : null,
+      };
+    });
+  return read(doc?.steps ?? []);
 }
 
 /** The intervals intervals.icu detected in an Activity, read from its `GET /activity/{id}/intervals` response. */

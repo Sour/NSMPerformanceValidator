@@ -175,7 +175,7 @@ A Planned Workout's estimated Training Load: its HR Load as if each step were ru
 _Avoid_: Planned load, estimated TSS
 
 **Fitness**:
-The long-term average of daily Training Load, weighted toward recent days with a 42-day time constant: how much training the body has absorbed. Every Activity and Cross-Training workout counts; a day without any adds nothing, so Fitness decays. Fitness and Fatigue start from intervals.icu's values on the day before stored history, kept locally; without them, from zero, and Fitness is settling for its first 42 days.
+The long-term average of daily Training Load, weighted toward recent days with a 42-day time constant: how much training the body has absorbed. Every Activity and Cross-Training workout counts except WeightTraining, which intervals.icu counts toward Fatigue only; a day without any adds nothing, so Fitness decays. Fitness and Fatigue start from intervals.icu's values on the day before stored history, kept locally; without them, from zero, and Fitness is settling for its first 42 days.
 _Avoid_: CTL, chronic load, aerobic fitness (Easy Pace answers that)
 
 **Fatigue**:
@@ -187,7 +187,7 @@ Fitness minus Fatigue on the same day, that day's workouts included; today also 
 _Avoid_: TSB, freshness, readiness
 
 **Form Zone**:
-Where a day's Form, rounded, falls, named as intervals.icu names them: **Transition** above +20, **Fresh** +5 to +20, **Grey Zone** −10 to +5, **Optimal** −10 to −30 (both ends included), **High Risk** below −30. Optimal is where training builds Fitness without too much risk. The Grey Zone is a state of Form on a day, unrelated to a Grey Zone Run, and is always named alongside Form.
+Where a day's Form, rounded, falls, named as intervals.icu names them: **Transition** +21 and above, **Fresh** +6 to +20, **Grey Zone** −9 to +5, **Optimal** −10 to −30, **High Risk** −31 and below. Optimal is where training builds Fitness without too much risk. The Grey Zone is a state of Form on a day, unrelated to a Grey Zone Run, and is always named alongside Form.
 _Avoid_: green zone, grey zone (alone), TSB zone
 
 **Training Week**:

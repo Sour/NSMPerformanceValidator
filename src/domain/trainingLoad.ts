@@ -1,4 +1,5 @@
 import type { ActivityStreams } from "./activityStreams";
+import type { EasyHrTarget } from "./easyTrend";
 
 /** What intervals.icu recorded with a workout to score it against; each null when not recorded. */
 export interface RecordedThresholds {
@@ -55,12 +56,9 @@ function paceLoad({ movingTime, gap, thresholds: { thresholdPace } }: LoadedWork
  */
 function hrLoad({ streams, thresholds: { lthr, maxHr, restingHr } }: LoadedWorkout): number | null {
   const hr = streams?.heartrate;
-  if (!streams || !hr || !hr.some(hasHeartRate) || lthr === null || maxHr === null || restingHr === null) return null;
-  if (!(maxHr > restingHr && lthr > restingHr)) return null;
-  const weight = (bpm: number) => {
-    const reserve = Math.max(0, (bpm - restingHr) / (maxHr - restingHr));
-    return reserve * TRIMP_SCALE * Math.exp(TRIMP_EXPONENT * reserve);
-  };
+  if (!streams || !hr || !hr.some(hasHeartRate)) return null;
+  const weight = trimpWeight({ lthr, maxHr, restingHr });
+  if (weight === null) return null;
   const { time, velocity } = streams;
   let trimp = 0;
   for (let i = 1; i < time.length; i++) {
@@ -68,7 +66,74 @@ function hrLoad({ streams, thresholds: { lthr, maxHr, restingHr } }: LoadedWorko
     if (!hasHeartRate(bpm) || velocity?.[i] === 0) continue;
     trimp += (time[i]! - time[i - 1]!) * weight(bpm);
   }
+  return hrssOf(trimp, weight, lthr!);
+}
+
+/** Banister's TRIMP weight of a heart rate between resting HR and Max HR; null without all three thresholds in order. */
+function trimpWeight({ lthr, maxHr, restingHr }: CurrentThresholds): ((bpm: number) => number) | null {
+  if (lthr === null || maxHr === null || restingHr === null || !(maxHr > restingHr && lthr > restingHr)) return null;
+  return (bpm) => {
+    const reserve = Math.max(0, (bpm - restingHr) / (maxHr - restingHr));
+    return reserve * TRIMP_SCALE * Math.exp(TRIMP_EXPONENT * reserve);
+  };
+}
+
+/** TRIMP summed over seconds, against that of an hour at LTHR, which is 100. */
+function hrssOf(trimp: number, weight: (bpm: number) => number, lthr: number): number {
   return (trimp / (3600 * weight(lthr))) * LOAD_PER_HOUR_AT_THRESHOLD;
+}
+
+/** A Planned Workout's heart-rate target: `%hr` of Max HR, `%lthr` of LTHR, or `bpm` as given. */
+export interface PlannedHrTarget {
+  low: number;
+  high: number;
+  units: "%hr" | "%lthr" | "bpm";
+}
+
+/** A step of a Planned Workout, or a group of steps repeated `reps` times. */
+export type PlannedStep =
+  | { kind: "step"; /** In seconds; null when not given in time. */ duration: number | null; target: PlannedHrTarget | null }
+  | { kind: "repeat"; reps: number; steps: PlannedStep[] };
+
+/** The thresholds a Planned Workout is scored against: the runner's current ones. */
+export type CurrentThresholds = Omit<RecordedThresholds, "thresholdPace">;
+
+/**
+ * A Planned Workout's Planned Training Load: its HR Load as if each step were run for its duration at the midpoint of
+ * its heart-rate target, a step without one at the midpoint of the Easy HR Target (% of Max HR), and a repeat group's
+ * steps once per repeat. Rounded to a whole number like Training Load. Null when it cannot be worked out: no steps, a
+ * step without a duration, an untargeted step without an Easy HR Target, or thresholds missing.
+ */
+export function plannedTrainingLoad(
+  steps: PlannedStep[],
+  thresholds: CurrentThresholds,
+  easyHrTarget: EasyHrTarget | null,
+): number | null {
+  const weight = trimpWeight(thresholds);
+  const { lthr, maxHr } = thresholds;
+  if (weight === null || steps.length === 0) return null;
+  const bpm = ({ low, high, units }: PlannedHrTarget) => {
+    const midpoint = (low + high) / 2;
+    return units === "bpm" ? midpoint : (midpoint / 100) * (units === "%hr" ? maxHr! : lthr!);
+  };
+  const easy: PlannedHrTarget | null = easyHrTarget && { ...easyHrTarget, units: "%hr" };
+  const trimpOf = (some: PlannedStep[]): number | null => {
+    let trimp = 0;
+    for (const s of some) {
+      if (s.kind === "repeat") {
+        const repeated = trimpOf(s.steps);
+        if (repeated === null) return null;
+        trimp += repeated * s.reps;
+        continue;
+      }
+      const target = s.target ?? easy;
+      if (s.duration === null || target === null) return null;
+      trimp += s.duration * weight(bpm(target));
+    }
+    return trimp;
+  };
+  const trimp = trimpOf(steps);
+  return trimp === null ? null : Math.round(hrssOf(trimp, weight, lthr!));
 }
 
 /** A heart rate of 0 is a dropped sensor, not a recorded heart rate. */

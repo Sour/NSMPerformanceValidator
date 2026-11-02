@@ -1,4 +1,4 @@
-import { currentEasyHrTarget, type EasyHrTarget } from "../domain/easyTrend";
+import type { EasyHrTarget } from "../domain/easyTrend";
 import { addDays } from "../domain/localDate";
 import {
   easyDiscipline,
@@ -26,7 +26,7 @@ import {
   type WeekPlanDay,
   type WeekPlanStatus,
 } from "../domain/weekPlan";
-import { analysedActivities, analysedPlannedWorkouts, easyPlannedWorkouts, easyRuns, qualityRuns } from "./analysis";
+import { analysedActivities, analysedPlannedWorkouts, easyHrTarget, easyRuns, qualityRuns } from "./analysis";
 import type { NsmAppWorkout, PlanDestination } from "./planDestination";
 import type { Db } from "./db";
 import { isNsmEvent, isOwnedEvent, weekPlanDay, type IntervalsEvent } from "./intervals";
@@ -95,7 +95,7 @@ export function plannerSettings(db: Db, today: string): PlannerSettingsResponse 
   const stored = loadPlannerSettings(db);
   const { lthr, maxHr } = loadAthleteSettings(db);
   return {
-    easyHrTarget: stored.easyHrTarget ?? currentEasyHrTarget(easyPlannedWorkouts(db), today),
+    easyHrTarget: easyHrTarget(db, today),
     qualityShareTarget: stored.qualityShareTarget ?? DEFAULT_QUALITY_SHARE_TARGET,
     lthr,
     maxHr,

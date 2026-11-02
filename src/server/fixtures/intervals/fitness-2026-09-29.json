@@ -1,0 +1,391 @@
+{
+ "start": {
+  "date": "2026-09-28",
+  "fitness": 27.867025,
+  "fatigue": 22.414904
+ },
+ "workouts": [
+  {
+   "date": "2026-09-29",
+   "type": "Run",
+   "trainingLoad": 37
+  },
+  {
+   "date": "2026-09-30",
+   "type": "Run",
+   "trainingLoad": 24
+  },
+  {
+   "date": "2026-10-01",
+   "type": "Run",
+   "trainingLoad": 21
+  },
+  {
+   "date": "2026-10-01",
+   "type": "WeightTraining",
+   "trainingLoad": 13
+  },
+  {
+   "date": "2026-10-02",
+   "type": "Run",
+   "trainingLoad": 27
+  },
+  {
+   "date": "2026-10-03",
+   "type": "Run",
+   "trainingLoad": 34
+  },
+  {
+   "date": "2026-10-04",
+   "type": "Walk",
+   "trainingLoad": 9
+  },
+  {
+   "date": "2026-10-05",
+   "type": "Run",
+   "trainingLoad": 53
+  },
+  {
+   "date": "2026-10-05",
+   "type": "WeightTraining",
+   "trainingLoad": 12
+  },
+  {
+   "date": "2026-10-06",
+   "type": "Run",
+   "trainingLoad": 32
+  },
+  {
+   "date": "2026-10-07",
+   "type": "Walk",
+   "trainingLoad": 10
+  },
+  {
+   "date": "2026-10-08",
+   "type": "Run",
+   "trainingLoad": 34
+  },
+  {
+   "date": "2026-10-08",
+   "type": "WeightTraining",
+   "trainingLoad": 14
+  },
+  {
+   "date": "2026-10-09",
+   "type": "Run",
+   "trainingLoad": 63
+  },
+  {
+   "date": "2026-10-10",
+   "type": "Hike",
+   "trainingLoad": 67
+  },
+  {
+   "date": "2026-10-10",
+   "type": "Walk",
+   "trainingLoad": 9
+  },
+  {
+   "date": "2026-10-11",
+   "type": "Walk",
+   "trainingLoad": 9
+  },
+  {
+   "date": "2026-10-12",
+   "type": "Run",
+   "trainingLoad": 61
+  },
+  {
+   "date": "2026-10-13",
+   "type": "Run",
+   "trainingLoad": 37
+  },
+  {
+   "date": "2026-10-13",
+   "type": "WeightTraining",
+   "trainingLoad": 19
+  },
+  {
+   "date": "2026-10-14",
+   "type": "Run",
+   "trainingLoad": 52
+  },
+  {
+   "date": "2026-10-15",
+   "type": "Run",
+   "trainingLoad": 43
+  },
+  {
+   "date": "2026-10-16",
+   "type": "Run",
+   "trainingLoad": 64
+  },
+  {
+   "date": "2026-10-17",
+   "type": "Hike",
+   "trainingLoad": 53
+  },
+  {
+   "date": "2026-10-18",
+   "type": "Walk",
+   "trainingLoad": 11
+  },
+  {
+   "date": "2026-10-19",
+   "type": "Run",
+   "trainingLoad": 61
+  },
+  {
+   "date": "2026-10-19",
+   "type": "Walk",
+   "trainingLoad": 10
+  },
+  {
+   "date": "2026-10-20",
+   "type": "Run",
+   "trainingLoad": 49
+  },
+  {
+   "date": "2026-10-21",
+   "type": "Run",
+   "trainingLoad": 66
+  },
+  {
+   "date": "2026-10-21",
+   "type": "Walk",
+   "trainingLoad": 8
+  },
+  {
+   "date": "2026-10-22",
+   "type": "Run",
+   "trainingLoad": 48
+  },
+  {
+   "date": "2026-10-23",
+   "type": "Run",
+   "trainingLoad": 60
+  },
+  {
+   "date": "2026-10-23",
+   "type": "Run",
+   "trainingLoad": 15
+  },
+  {
+   "date": "2026-10-24",
+   "type": "Hike",
+   "trainingLoad": 27
+  },
+  {
+   "date": "2026-10-24",
+   "type": "Walk",
+   "trainingLoad": 10
+  },
+  {
+   "date": "2026-10-26",
+   "type": "Run",
+   "trainingLoad": 55
+  },
+  {
+   "date": "2026-10-26",
+   "type": "WeightTraining",
+   "trainingLoad": 7
+  },
+  {
+   "date": "2026-10-27",
+   "type": "Run",
+   "trainingLoad": 47
+  },
+  {
+   "date": "2026-10-28",
+   "type": "Run",
+   "trainingLoad": 66
+  },
+  {
+   "date": "2026-10-29",
+   "type": "Run",
+   "trainingLoad": 46
+  },
+  {
+   "date": "2026-10-30",
+   "type": "Run",
+   "trainingLoad": 49
+  },
+  {
+   "date": "2026-11-01",
+   "type": "Run",
+   "trainingLoad": 41
+  }
+ ],
+ "wellness": [
+  {
+   "date": "2026-09-29",
+   "ctl": 28.08191,
+   "atl": 24.356503
+  },
+  {
+   "date": "2026-09-30",
+   "ctl": 27.985868,
+   "atl": 24.309044
+  },
+  {
+   "date": "2026-10-01",
+   "ctl": 27.821503,
+   "atl": 25.599125
+  },
+  {
+   "date": "2026-10-02",
+   "ctl": 27.802174,
+   "atl": 25.785612
+  },
+  {
+   "date": "2026-10-03",
+   "ctl": 27.947998,
+   "atl": 26.87913
+  },
+  {
+   "date": "2026-10-04",
+   "ctl": 27.502184,
+   "atl": 24.499022
+  },
+  {
+   "date": "2026-10-05",
+   "ctl": 28.102104,
+   "atl": 29.890596
+  },
+  {
+   "date": "2026-10-06",
+   "ctl": 28.193815,
+   "atl": 30.171404
+  },
+  {
+   "date": "2026-10-07",
+   "ctl": 27.765745,
+   "atl": 27.486145
+  },
+  {
+   "date": "2026-10-08",
+   "ctl": 27.912426,
+   "atl": 30.216993
+  },
+  {
+   "date": "2026-10-09",
+   "ctl": 28.737978,
+   "atl": 34.581135
+  },
+  {
+   "date": "2026-10-10",
+   "ctl": 29.849974,
+   "atl": 40.094902
+  },
+  {
+   "date": "2026-10-11",
+   "ctl": 29.35941,
+   "atl": 35.955482
+  },
+  {
+   "date": "2026-10-12",
+   "ctl": 30.103859,
+   "atl": 39.289463
+  },
+  {
+   "date": "2026-10-13",
+   "ctl": 30.266113,
+   "atl": 41.514004
+  },
+  {
+   "date": "2026-10-14",
+   "ctl": 30.777475,
+   "atl": 42.90992
+  },
+  {
+   "date": "2026-10-15",
+   "ctl": 31.06505,
+   "atl": 42.921913
+  },
+  {
+   "date": "2026-10-16",
+   "ctl": 31.839954,
+   "atl": 45.72787
+  },
+  {
+   "date": "2026-10-17",
+   "ctl": 32.337814,
+   "atl": 46.695953
+  },
+  {
+   "date": "2026-10-18",
+   "ctl": 31.835772,
+   "atl": 41.944035
+  },
+  {
+   "date": "2026-10-19",
+   "ctl": 32.75724,
+   "atl": 45.812027
+  },
+  {
+   "date": "2026-10-20",
+   "ctl": 33.139404,
+   "atl": 46.236416
+  },
+  {
+   "date": "2026-10-21",
+   "ctl": 34.100784,
+   "atl": 49.93236
+  },
+  {
+   "date": "2026-10-22",
+   "ctl": 34.42781,
+   "atl": 49.67512
+  },
+  {
+   "date": "2026-10-23",
+   "ctl": 35.382404,
+   "atl": 53.04642
+  },
+  {
+   "date": "2026-10-24",
+   "ctl": 35.420464,
+   "atl": 50.910286
+  },
+  {
+   "date": "2026-10-25",
+   "ctl": 34.58708,
+   "atl": 44.133003
+  },
+  {
+   "date": "2026-10-26",
+   "ctl": 35.06736,
+   "atl": 46.511494
+  },
+  {
+   "date": "2026-10-27",
+   "ctl": 35.348114,
+   "atl": 46.576523
+  },
+  {
+   "date": "2026-10-28",
+   "ctl": 36.0693,
+   "atl": 49.162216
+  },
+  {
+   "date": "2026-10-29",
+   "ctl": 36.302956,
+   "atl": 48.741257
+  },
+  {
+   "date": "2026-10-30",
+   "ctl": 36.601696,
+   "atl": 48.7757
+  },
+  {
+   "date": "2026-10-31",
+   "ctl": 35.74052,
+   "atl": 42.282578
+  },
+  {
+   "date": "2026-11-01",
+   "ctl": 35.864265,
+   "atl": 42.11184
+  }
+ ]
+}

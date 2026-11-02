@@ -192,6 +192,29 @@ h2 {
   font-variant-numeric: tabular-nums;
 }
 
+.fitness-planned {
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.fitness-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.fitness-optimal {
+  font-size: 0.875rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  cursor: help;
+}
+
+.fitness-optimal strong {
+  color: var(--matched);
+}
+
 .presets {
   display: flex;
 }

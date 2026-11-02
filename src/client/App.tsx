@@ -26,7 +26,7 @@ import { VolumeChart } from "./VolumeChart";
 
 const FITNESS_RANGE_PREFERENCE = "fitnessRange";
 
-/** The Fitness range this browser last chose, or 3 months. */
+/** The Fitness range this browser last chose, or 42 days. */
 function rememberedFitnessRange(): FitnessRange {
   const stored = loadViewPreference(FITNESS_RANGE_PREFERENCE);
   return stored !== null && isFitnessRange(stored) ? stored : DEFAULT_FITNESS_RANGE;
@@ -139,7 +139,7 @@ function ProgressPage() {
       <VolumeChart weeks={volume.weeks} qualityShareTarget={volume.qualityShareTarget} />
 
       <h1 className="section-title">Fitness</h1>
-      <FitnessChart days={fitness.days} range={fitnessRange} onRange={viewFitnessRange} />
+      <FitnessChart days={fitness.days} formZones={fitness.formZones} range={fitnessRange} onRange={viewFitnessRange} />
 
       <h1 className="section-title">Easy Pace</h1>
       <EasyChart easy={easy} />

@@ -1,6 +1,14 @@
 import { Hono } from "hono";
 import type { EasyTrend } from "../domain/easyTrend";
-import { DEFAULT_FITNESS_RANGE, FITNESS_RANGES, isFitnessRange, type FitnessDay, type FitnessRange } from "../domain/fitness";
+import {
+  DEFAULT_FITNESS_RANGE,
+  FITNESS_RANGES,
+  formZoneCount,
+  isFitnessRange,
+  type FitnessDay,
+  type FitnessRange,
+  type FormZoneCount,
+} from "../domain/fitness";
 import { repLengthCards, type RepLengthCard, type RepLengthRun } from "../domain/repProgress";
 import { thresholdPaces, type ThresholdPaces } from "../domain/thresholdPace";
 import { isLocalDate } from "../domain/localDate";
@@ -68,6 +76,8 @@ export interface FitnessResponse {
   range: FitnessRange;
   /** One per day of the range through today, oldest first; none before stored history starts, and none without LTHR. */
   days: FitnessDay[];
+  /** The returned days in each Form Zone; settling days and a day still counting a plan are left out. */
+  formZones: FormZoneCount;
 }
 
 /** What the runner has set for the app. */
@@ -159,7 +169,8 @@ export function createApp(
     .get("/api/fitness", (c) => {
       const range = c.req.query("range") ?? DEFAULT_FITNESS_RANGE;
       if (!isFitnessRange(range)) return c.json({ error: `range must be one of ${Object.keys(FITNESS_RANGES).join(", ")}` }, 400);
-      return c.json<FitnessResponse>({ range, days: fitness(db, today(), FITNESS_RANGES[range]) });
+      const days = fitness(db, today(), FITNESS_RANGES[range]);
+      return c.json<FitnessResponse>({ range, days, formZones: formZoneCount(days) });
     })
     .get("/api/thresholds", (c) => {
       const analysedPlanned = analysedPlannedWorkouts(db);
