@@ -92,7 +92,7 @@ A running Activity with no Match. It counts toward Weekly Volume but has no Run 
 _Avoid_: Extra run, bonus run
 
 **Grey Zone Run**:
-An Easy Run or Long Run that spent more than 25% of its moving time above the top of its Easy HR Target: too hard to be easy, too easy to be quality, so it does little for fitness. It is shown but does not count toward Easy Pace progress.
+An Easy Run or Long Run that spent more than 25% of its moving time above the top of its Easy HR Target: too hard to be easy, too easy to be quality, so it does little for fitness. It is shown but does not count toward Easy Pace or Aerobic Decoupling progress.
 _Avoid_: Not Easy, too hard, junk run
 
 **Walk Break**:
@@ -122,6 +122,10 @@ Grade-adjusted pace and average heart rate of an Easy Run or Long Run, tracked o
 **Easy Pace**:
 An Easy Run's or Long Run's Easy GAP scaled to the middle of the current Easy HR Target, assuming grade-adjusted speed rises in proportion to heart rate. Walk Breaks stay in, since needing to walk is part of the runner's fitness. It answers "am I getting faster at the same easy effort", one value per run; the headline easy progress number.
 _Avoid_: Normalised pace, Easy GAP (when the scaled number is meant), aerobic pace
+
+**Aerobic Decoupling**:
+How much an Easy Run's or Long Run's grade-adjusted speed per heartbeat falls from the first half of its moving time to the second, as a percentage of the first half's. The first 10 minutes of moving time are left out before halving, while heart rate is still climbing to its steady level. Walk Breaks stay in, as they do for Easy Pace. It catches both ways a heart-rate-guided run tires: heart rate climbing at the same pace, and pace fading at the same heart rate. The lower, the more aerobically durable. A run with less than 40 minutes of moving time is too short to have one, and Quality Runs have none.
+_Avoid_: Cardiac drift (that is heart rate rising at a steady pace), decoupling (alone), Pa:HR
 
 **LT1 Pace / LT2 Pace**:
 The estimated grade-adjusted pace at which the runner's heart rate would sit at LT1 HR or LTHR. Both are read from a single pace-versus-heart-rate line fitted to the Rep GAP / Rep HR of Complete Quality Runs and the Easy GAP / Easy HR of Easy Runs and Long Runs over the last six Training Weeks. Over Target Quality Runs are included; Incomplete ones and Unplanned Runs are not.
