@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import type { SyncStatusResponse } from "../server/app";
 import { getJson } from "./api";
-import { formatDateTime } from "./format";
+import { formatDateTime, garminNotice, thresholdChangeText } from "./format";
 
 /** How often the page checks for syncs it did not start, such as scheduled ones. */
 const SYNC_POLL_MS = 60_000;
 
-/** Shows the latest sync and offers Sync now; calls `onSynced` whenever a sync has finished since the page loaded. */
+/**
+ * Shows the latest sync, the latest change to the running thresholds from Garmin and, until Garmin is read again, why
+ * it could not be, and offers Sync now; calls `onSynced` whenever a sync has finished since the page loaded.
+ */
 export function SyncBar({ onSynced }: { onSynced: () => Promise<void> }) {
   const [status, setStatus] = useState<SyncStatusResponse | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -59,6 +62,8 @@ export function SyncBar({ onSynced }: { onSynced: () => Promise<void> }) {
           Last sync failed {status.lastFinishedAt && formatDateTime(status.lastFinishedAt)}: {status.lastError}
         </p>
       )}
+      {status?.garmin.lastChange && <p className="note">{thresholdChangeText(status.garmin.lastChange)}</p>}
+      {status?.garmin.failure && <p className="error">{garminNotice(status.garmin.failure)}</p>}
       {requestError && <p className="error">Could not reach the server: {requestError}</p>}
     </div>
   );

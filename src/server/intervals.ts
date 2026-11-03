@@ -121,8 +121,9 @@ interface WorkoutStep {
 }
 
 /**
- * A Planned Workout as a Week Plan day, read from its name and `workout_doc`: a Quality Run's Format from the name and
- * its recovery, warm-up and cool-down from the structure (0 when it has none), or an Easy Run's or Long Run's duration.
+ * A Planned Workout as a Week Plan day, read from its name and `workout_doc`: a Quality Run's Format from the name, its
+ * recovery, warm-up and cool-down from the structure (0 when it has none) and its Rep Pace Target from the workout text,
+ * or an Easy Run's or Long Run's duration.
  * Null for a Planned Workout of no Run Type.
  */
 export function weekPlanDay(event: IntervalsEvent): WorkoutDay | null {
@@ -131,17 +132,34 @@ export function weekPlanDay(event: IntervalsEvent): WorkoutDay | null {
   if (type === "Quality Run") {
     const steps = doc?.steps ?? [];
     const stepDuration = (s: WorkoutStep | undefined) => (typeof s?.duration === "number" ? s.duration : 0);
+    const repPaceTarget = plannedRepPaceTarget(event);
     return {
       kind: type,
       ...qualityRunFormat(event.name)!,
       recovery: plannedRecovery(event) ?? 0,
       warmUp: stepDuration(steps.find((s) => s.warmup)),
       coolDown: stepDuration(steps.find((s) => s.cooldown)),
+      ...(repPaceTarget !== null && { repPaceTarget }),
     };
   }
   if (type === null) return null;
   const duration = typeof doc?.duration === "number" ? doc.duration : Number(event.moving_time ?? 0);
   return { kind: type, duration };
+}
+
+/** A Rep step's pace band in this app's workout text, e.g. "- 10m 6:55/mi-7:05/mi Pace intensity=active". */
+const REP_PACE_BAND_TEXT = /^- \S+ (\d+):(\d\d)\/mi-(\d+):(\d\d)\/mi Pace intensity=active$/m;
+
+/**
+ * A Quality Run's Rep Pace Target in seconds per mile: the middle of the pace band its Reps are given in the workout
+ * text this app wrote, which intervals.icu keeps as the event's description. Null when its Reps have none.
+ */
+export function plannedRepPaceTarget(event: { description?: unknown }): number | null {
+  const band = REP_PACE_BAND_TEXT.exec(typeof event.description === "string" ? event.description : "");
+  if (!band) return null;
+  const low = Number(band[1]) * 60 + Number(band[2]);
+  const high = Number(band[3]) * 60 + Number(band[4]);
+  return (low + high) / 2;
 }
 
 /**
@@ -175,25 +193,28 @@ export function plannedEasyHrTarget(event: unknown): EasyHrTarget | null {
 
 const HR_TARGET_UNITS: Record<string, PlannedHrTarget["units"]> = { "%hr": "%hr", "%lthr": "%lthr", bpm: "bpm" };
 
+/** A Rep's heart-rate target, 90–98% of LTHR, which a Rep guided by a Rep Pace Target still has. */
+const REP_HR_TARGET: PlannedHrTarget = { low: 90, high: 98, units: "%lthr" };
+
 /**
  * A Planned Workout's steps with their heart-rate targets, read from an intervals.icu calendar event's `workout_doc`:
  * a step with `reps` is a repeat group. A step's target is null when it has none in heart rate, as a recovery, and its
- * duration null when not given in seconds. Empty without a `workout_doc`.
+ * duration null when not given in seconds. The Reps of a Quality Run with a Rep Pace Target, given in pace, have their
+ * heart-rate target all the same. Empty without a `workout_doc`.
  */
 export function plannedSteps(event: unknown): PlannedStep[] {
-  const doc = (event as { workout_doc?: { steps?: WorkoutStep[] } | null } | null)?.workout_doc;
-  const read = (steps: WorkoutStep[]): PlannedStep[] =>
+  const e = (event ?? {}) as { workout_doc?: { steps?: WorkoutStep[] } | null; name?: unknown; description?: unknown };
+  const paced = typeof e.name === "string" && runType(e.name) === "Quality Run" && plannedRepPaceTarget(e) !== null;
+  const read = (steps: WorkoutStep[], inRepeat: boolean): PlannedStep[] =>
     steps.map((s) => {
-      if (typeof s.reps === "number") return { kind: "repeat", reps: s.reps, steps: read(s.steps ?? []) };
+      if (typeof s.reps === "number") return { kind: "repeat", reps: s.reps, steps: read(s.steps ?? [], true) };
       const { start, end, units } = s.hr ?? {};
       const known = typeof units === "string" ? HR_TARGET_UNITS[units] : undefined;
-      return {
-        kind: "step",
-        duration: typeof s.duration === "number" ? s.duration : null,
-        target: known && typeof start === "number" && typeof end === "number" ? { low: start, high: end, units: known } : null,
-      };
+      const target = known && typeof start === "number" && typeof end === "number" ? { low: start, high: end, units: known } : null;
+      const pacedRep = paced && inRepeat && s.intensity === "active" && target === null;
+      return { kind: "step", duration: typeof s.duration === "number" ? s.duration : null, target: pacedRep ? REP_HR_TARGET : target };
     });
-  return read(doc?.steps ?? []);
+  return read(e.workout_doc?.steps ?? [], false);
 }
 
 /** The intervals intervals.icu detected in an Activity, read from its `GET /activity/{id}/intervals` response. */
@@ -264,6 +285,11 @@ export function runLthr(athlete: unknown): number | null {
   return positive(runSettings(athlete)?.lthr);
 }
 
+/** Whether a `GET /athlete/{id}` response has sport settings covering Run. */
+export function hasRunSettings(athlete: unknown): boolean {
+  return runSettings(athlete) !== undefined;
+}
+
 /** The sport settings covering Run in a `GET /athlete/{id}` response. */
 function runSettings(athlete: unknown): Record<string, unknown> | undefined {
   const settings = (athlete as { sportSettings?: { types?: unknown }[] } | null)?.sportSettings;
@@ -288,6 +314,8 @@ export interface IntervalsClient {
   athlete(): Promise<unknown>;
   /** The athlete's wellness record for one day; read its Fitness and Fatigue with `wellnessFitness`. */
   wellness(date: string): Promise<unknown>;
+  /** Replaces the given fields of the athlete's Run settings, in bpm, and recalculates its heart-rate zones. */
+  updateRunSportSettings(fields: { lthr?: number; max_hr?: number }): Promise<void>;
   /** Creates a calendar event, responding with it as stored. */
   createEvent(event: object): Promise<IntervalsEvent>;
   /** Replaces the given fields of a calendar event, responding with it as stored. */
@@ -321,8 +349,8 @@ export function createIntervalsClient(athleteId: string, apiKey: string): Interv
     return fetch(url, { ...init, headers: { authorization, accept: "application/json", "content-type": "application/json" } });
   }
 
-  async function send<T>(method: "POST" | "PUT", path: string, body: unknown): Promise<T> {
-    return read<T>(path, await request(path, {}, { method, body: JSON.stringify(body) }));
+  async function send<T>(method: "POST" | "PUT", path: string, body: unknown, params: Record<string, string> = {}): Promise<T> {
+    return read<T>(path, await request(path, params, { method, body: JSON.stringify(body) }));
   }
 
   async function remove(path: string): Promise<void> {
@@ -346,5 +374,8 @@ export function createIntervalsClient(athleteId: string, apiKey: string): Interv
     createEvent: (event) => send("POST", `${athlete}/events`, event),
     updateEvent: (eventId, event) => send("PUT", `${athlete}/events/${eventId}`, event),
     deleteEvent: (eventId) => remove(`${athlete}/events/${eventId}`),
+    updateRunSportSettings: async (fields) => {
+      await send("PUT", `${athlete}/sport-settings/Run`, fields, { recalcHrZones: "true" });
+    },
   };
 }

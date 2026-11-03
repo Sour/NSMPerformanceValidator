@@ -11,7 +11,7 @@ import {
 } from "./app";
 import { secondsPerMile } from "../domain/pace";
 import { openDb } from "./db";
-import { deleteActivity, saveActivity, saveAthleteSettings, saveSync } from "./store";
+import { deleteActivity, saveActivity, saveAthleteSettings, saveGarminSyncStatus, saveSync } from "./store";
 import type { SyncRunner } from "./syncRunner";
 
 describe("/api/sync", () => {
@@ -23,6 +23,7 @@ describe("/api/sync", () => {
       lastSucceededAt: null,
       lastError: null,
       running: false,
+      garmin: { failure: null, lastChange: null },
     });
   });
 
@@ -43,7 +44,22 @@ describe("/api/sync", () => {
       lastSucceededAt: "2026-10-23T12:00:00.000Z",
       lastError: null,
       running: false,
+      garmin: { failure: null, lastChange: null },
     });
+  });
+
+  it("reports a Garmin failure and its start while the sync itself succeeded, and the latest change from Garmin", async () => {
+    const db = openDb(":memory:");
+    const garmin = {
+      failure: { kind: "KeyRejected" as const, since: "2026-11-02T08:00:00.000Z" },
+      lastChange: { at: "2026-10-20T08:00:00.000Z", lthr: { from: 175, to: 173 }, maxHr: null },
+    };
+    saveGarminSyncStatus(db, garmin);
+    const app = createApp(db, () => "2026-11-02", idleRunner());
+
+    const res = await app.request("/api/sync");
+
+    expect(await res.json()).toMatchObject({ lastError: null, garmin });
   });
 });
 

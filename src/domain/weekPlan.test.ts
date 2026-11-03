@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { addDays } from "./localDate";
-import { dayEditable, plannableWeeks, plannedQualityShare, plannedRepTime, plannedTime, startWeekPlan, weekPlannedTime, type WeekPlanDay } from "./weekPlan";
+import {
+  dayEditable,
+  plannableWeeks,
+  plannedQualityShare,
+  plannedRepTime,
+  plannedTime,
+  sameDay,
+  startWeekPlan,
+  weekPlannedTime,
+  type WeekPlanDay,
+} from "./weekPlan";
 
 const rest: WeekPlanDay = { kind: "Rest" };
 const easy = (minutes: number): WeekPlanDay => ({ kind: "Easy Run", duration: minutes * 60 });
@@ -107,5 +117,19 @@ describe("plannableWeeks", () => {
   it("are the current Training Week and the next, by their Mondays", () => {
     expect(plannableWeeks("2026-11-04")).toEqual({ current: "2026-11-02", next: "2026-11-09" });
     expect(plannableWeeks("2026-11-08")).toEqual({ current: "2026-11-02", next: "2026-11-09" });
+  });
+});
+
+describe("sameDay", () => {
+  const quality = { kind: "Quality Run", reps: 3, repLength: 600, recovery: 60, warmUp: 600, coolDown: 600 } as const;
+
+  it("tells apart Quality Runs that differ only in their Rep Pace Target", () => {
+    expect(sameDay({ ...quality, repPaceTarget: 420 }, { ...quality, repPaceTarget: 425 })).toBe(false);
+    expect(sameDay({ ...quality, repPaceTarget: 420 }, quality)).toBe(false);
+  });
+
+  it("takes a Quality Run saved before Rep Pace Targets as having none", () => {
+    expect(sameDay(quality, { ...quality, repPaceTarget: undefined })).toBe(true);
+    expect(sameDay({ ...quality, repPaceTarget: 420 }, { ...quality, repPaceTarget: 420 })).toBe(true);
   });
 });

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { heartRateTarget, qualityRunFormat } from "../domain/qualityRun";
 import { runType } from "../domain/runType";
+import { plannedTrainingLoad } from "../domain/trainingLoad";
 import type { WorkoutDay } from "../domain/weekPlan";
 import {
   eventVersion,
@@ -9,6 +10,7 @@ import {
   isOwnedEvent,
   plannedEasyHrTarget,
   plannedRecovery,
+  plannedSteps,
   weekPlanDay,
   type IntervalsClient,
   type IntervalsEvent,
@@ -124,6 +126,49 @@ describe("workoutEvent", () => {
       expect(plannedEasyHrTarget(event)).toEqual(day.kind === "Quality Run" && day.warmUp === 0 ? null : { low: 60, high: 68 });
     }
   });
+
+  describe("a Quality Run with a Rep Pace Target", () => {
+    const unpaced = { kind: "Quality Run", reps: 3, repLength: 600, recovery: 60, warmUp: 600, coolDown: 600 } as const;
+    // 7:00 /mi.
+    const paced: WorkoutDay = { ...unpaced, repPaceTarget: 420 };
+
+    it("guides its Reps by a pace band of ±5 s/mi instead of the heart-rate target, and changes nothing else", () => {
+      const plain = workoutEvent("2026-11-03", unpaced, targets);
+      const event = workoutEvent("2026-11-03", paced, targets);
+      expect(event.description).toBe(plain.description.replace("90-98% LTHR hr=1s", "6:55/mi-7:05/mi Pace"));
+      expect(event.description).toContain("3x\n- 10m 6:55/mi-7:05/mi Pace intensity=active\n- 1m intensity=recovery");
+      expect({ ...event, description: null }).toEqual({ ...plain, description: null });
+      expect(event.name).toBe("3 x 10:00 at 163–177 bpm");
+    });
+
+    it("writes paces with seconds below ten as intervals.icu does, e.g. 6:05", () => {
+      expect(workoutEvent("2026-11-03", { ...unpaced, repPaceTarget: 370 }, targets).description).toContain(
+        "- 10m 6:05/mi-6:15/mi Pace intensity=active",
+      );
+    });
+
+    it("reads back with its Rep Pace Target, and as the same Quality Run to every other reader", () => {
+      const event = stored(workoutEvent("2026-11-03", paced, targets));
+      expect(weekPlanDay(event)).toEqual(paced);
+      expect(weekPlanDay(stored(workoutEvent("2026-11-03", unpaced, targets)))).toEqual(unpaced);
+      expect(heartRateTarget(event.name)).toEqual({ low: 163, high: 177 });
+      expect(plannedRecovery(event)).toBe(60);
+      expect(plannedEasyHrTarget(event)).toEqual({ low: 62, high: 70 });
+    });
+
+    it("has the Planned Training Load of the unpaced Quality Run: a paced Rep counts at 90–98% of LTHR", () => {
+      const thresholds = { lthr: 181, maxHr: 197, restingHr: 50 };
+      const load = (day: WorkoutDay) =>
+        plannedTrainingLoad(plannedSteps(stored(workoutEvent("2026-11-03", day, targets))), thresholds, targets.easyHrTarget);
+      expect(load(paced)).toBe(load(unpaced));
+      expect(load(paced)).not.toBeNull();
+    });
+
+    it("counts as a new version when only its pace changes", () => {
+      const version = (day: WorkoutDay) => eventVersion(stored(workoutEvent("2026-11-03", day, targets)));
+      expect(version({ ...unpaced, repPaceTarget: 425 })).not.toBe(version(paced));
+    });
+  });
 });
 
 /**
@@ -151,6 +196,7 @@ function fakeCalendar(events: IntervalsEvent[], fail: (write: string) => boolean
     streams: unused,
     athlete: async () => ({}),
     wellness: unused,
+    updateRunSportSettings: unused,
     createEvent: async (payload) => {
       const p = payload as ReturnType<typeof workoutEvent>;
       write(`create ${p.start_date_local.slice(0, 10)}`);

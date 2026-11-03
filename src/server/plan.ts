@@ -9,6 +9,7 @@ import {
   volumeStep,
   type PlanSuggestion,
 } from "../domain/planSuggestions";
+import { lastRepPaceTargets, recentRepGaps, type RecentRepGap } from "../domain/repPaceTarget";
 import { thresholdPaces } from "../domain/thresholdPace";
 import { trainingWeek } from "../domain/trainingWeek";
 import { weeklyVolume } from "../domain/weeklyVolume";
@@ -23,6 +24,7 @@ import {
   weekPlannedTime,
   weekPlanStatus,
   type CalendarWorkout,
+  type DatedDay,
   type WeekPlanDay,
   type WeekPlanStatus,
 } from "../domain/weekPlan";
@@ -36,6 +38,7 @@ import {
   loadPlannedWorkouts,
   loadPlannerSettings,
   loadWeekPlan,
+  loadWeekPlans,
   saveDismissal,
   savePlannerSettings,
   saveWeekPlan,
@@ -87,6 +90,10 @@ export interface PlanResponse {
   /** Those not dismissed for this week. */
   suggestions: PlanSuggestion[];
   settings: PlannerSettingsResponse;
+  /** Per Rep Length in seconds, the Rep Pace Target last given, which a day made that Quality Run starts with. */
+  repPaceTargets: Record<number, number>;
+  /** Per Rep Length in seconds, the Rep GAP of the latest Complete Quality Run, shown beside its Rep Pace Target. */
+  recentRepGaps: Record<number, RecentRepGap>;
 }
 
 const DEFAULT_QUALITY_SHARE_TARGET = 25;
@@ -184,7 +191,23 @@ export function planResponse(db: Db, plan: StoredWeekPlan, today: string): PlanR
     },
     suggestions: planSuggestions(db, plan, today, settings, editable),
     settings,
+    repPaceTargets: lastRepPaceTargets(plannedDays(db)),
+    recentRepGaps: recentRepGaps(qualityRuns(analysedPlannedWorkouts(db), analysedActivities(db))),
   };
+}
+
+/**
+ * Every day planned, in a Week Plan or on the calendar, as Week Plan days on their dates. A Week Plan's draft stands
+ * for its day over whatever is on the calendar that day.
+ */
+function plannedDays(db: Db): DatedDay[] {
+  const planned = loadWeekPlans(db).flatMap((plan) => weekDates(plan.week).map((date, i) => ({ date, day: plan.days[i]! })));
+  const inWeekPlans = new Set(planned.map((d) => d.date));
+  const calendar = loadPlannedWorkouts(db).flatMap((p) => {
+    const day = inWeekPlans.has(p.date) ? null : weekPlanDay(p.raw as IntervalsEvent);
+    return day ? [{ date: p.date, day }] : [];
+  });
+  return [...planned, ...calendar];
 }
 
 /** The Plan Suggestions for `plan` from recent progress, without those dismissed for its week. */
@@ -269,6 +292,9 @@ export function discardDraft(db: Db, plan: StoredWeekPlan, today: string): Store
   return discarded;
 }
 
+/** The fastest Rep Pace Target taken, in whole seconds per mile, so its band of ±5 s/mi stays a pace. */
+const MIN_REP_PACE_TARGET = 60;
+
 /** Seven Week Plan days read from a request body's `days`; null when it is not that. */
 function parseDays(input: unknown): WeekPlanDay[] | null {
   const days = (input as { days?: unknown } | null)?.days;
@@ -290,7 +316,13 @@ function parseDay(input: unknown): WeekPlanDay | null {
         coolDown: seconds(d.coolDown, 0),
       };
       if (Object.values(fields).some((v) => v === null)) return null;
-      return { kind: d.kind, ...(fields as { [K in keyof typeof fields]: number }) };
+      const repPaceTarget = d.repPaceTarget ?? null;
+      if (repPaceTarget !== null && seconds(repPaceTarget, MIN_REP_PACE_TARGET) === null) return null;
+      return {
+        kind: d.kind,
+        ...(fields as { [K in keyof typeof fields]: number }),
+        ...(repPaceTarget !== null && { repPaceTarget: repPaceTarget as number }),
+      };
     }
     case "Easy Run":
     case "Long Run": {

@@ -5,6 +5,7 @@ import type { WeekPlanDay } from "../domain/weekPlan";
 import { createApp, type PlannerSettingsResponse, type PlanResponse, type PushResponse } from "./app";
 import { openDb, type Db } from "./db";
 import type { IntervalsActivity, IntervalsEvent } from "./intervals";
+import { workoutEvent } from "./intervalsDestination";
 import { loadWeekPlan, saveAthleteSettings, saveSync, saveWeekPlan } from "./store";
 import type { DatedDay } from "../domain/weekPlan";
 import type { NsmAppWorkout, PlanDestination, PlanDestinationResult, WorkoutTargets } from "./planDestination";
@@ -186,6 +187,45 @@ describe("editing a Week Plan draft", () => {
     expect((await saveDraft(app, "2026-11-09", [{ kind: "Tempo" } as unknown as WeekPlanDay, ...days.slice(1)])).status).toBe(400);
     const zeroReps = { kind: "Quality Run", reps: 0, repLength: 180, recovery: 60, warmUp: 600, coolDown: 600 } as const;
     expect((await saveDraft(app, "2026-11-09", [zeroReps, ...days.slice(1)])).status).toBe(400);
+  });
+
+  it("saves a Quality Run's Rep Pace Target with the draft, and clears it", async () => {
+    const db = openDb(":memory:");
+    sync(db, nsmWeekShifted(1));
+    const app = createApp(db, () => today, idleRunner());
+    const edited = (await plan(app, "2026-11-09")).days.map((d) => d.day);
+    edited[0] = { ...(edited[0] as Extract<WeekPlanDay, { kind: "Quality Run" }>), repPaceTarget: 420 };
+
+    await saveDraft(app, "2026-11-09", edited);
+    expect((await plan(app, "2026-11-09")).days[0]!.day).toMatchObject({ repPaceTarget: 420 });
+
+    edited[0] = { ...edited[0], repPaceTarget: null } as unknown as WeekPlanDay;
+    await saveDraft(app, "2026-11-09", edited);
+    expect((await plan(app, "2026-11-09")).days[0]!.day).not.toHaveProperty("repPaceTarget");
+  });
+
+  it("gives the Rep Pace Target last given per Rep Length, from the calendar and Week Plans alike", async () => {
+    const db = openDb(":memory:");
+    const quality = { kind: "Quality Run", reps: 3, repLength: 600, recovery: 60, warmUp: 600, coolDown: 600 } as const;
+    const pushed = workoutEvent("2026-10-28", { ...quality, repPaceTarget: 430 }, { lthr: 181, easyHrTarget: { low: 62, high: 70 } });
+    sync(db, [...nsmWeek, { id: 99, paired_activity_id: null, ...pushed }]);
+    const app = createApp(db, () => today, idleRunner());
+    expect((await plan(app, "2026-11-09")).repPaceTargets).toEqual({ 600: 430 });
+
+    const edited = (await plan(app, "2026-11-09")).days.map((d) => d.day);
+    edited[2] = { ...quality, reps: 2, repPaceTarget: 425 };
+    await saveDraft(app, "2026-11-09", edited);
+    expect((await plan(app, "2026-11-09")).repPaceTargets).toEqual({ 600: 425 });
+  });
+
+  it("rejects a Rep Pace Target that is not whole seconds per mile of at least a minute", async () => {
+    const app = createApp(openDb(":memory:"), () => today, idleRunner());
+    const days = Array.from({ length: 6 }, () => rest);
+    const quality = { kind: "Quality Run", reps: 3, repLength: 600, recovery: 60, warmUp: 600, coolDown: 600 } as const;
+    for (const repPaceTarget of [7.5, 30, "7:00"]) {
+      const day = { ...quality, repPaceTarget } as unknown as WeekPlanDay;
+      expect((await saveDraft(app, "2026-11-09", [day, ...days])).status).toBe(400);
+    }
   });
 
   it("starts a new week as a copy of the previous Week Plan when there is one", async () => {
@@ -378,6 +418,23 @@ describe("pushing a Week Plan", () => {
     const { body } = await push(app, "2026-11-09");
     expect(body).toMatchObject({ outcome: "Pushed", plan: { status: "Pushed" } });
     expect(pushes[1]!.days.at(-1)).toEqual({ date: "2026-11-15", day: easy(30) });
+  });
+
+  it("counts a change to a Rep Pace Target alone as Unpushed changes, and sends it", async () => {
+    const { app, pushes } = setUp();
+    const quality = { kind: "Quality Run", reps: 3, repLength: 600, recovery: 60, warmUp: 600, coolDown: 600 } as const;
+    const edited = (await plan(app, "2026-11-09")).days.map((d) => d.day);
+    edited[0] = { ...quality, repPaceTarget: 425 };
+    await saveDraft(app, "2026-11-09", edited);
+    await push(app, "2026-11-09");
+
+    edited[0] = { ...quality, repPaceTarget: 420 };
+    const saved = (await (await saveDraft(app, "2026-11-09", edited)).json()) as PlanResponse;
+    expect(saved.status).toBe("Unpushed changes");
+
+    await push(app, "2026-11-09");
+    expect(pushes[1]!.days[0]).toEqual({ date: "2026-11-09", day: edited[0] });
+    expect((await plan(app, "2026-11-09")).status).toBe("Pushed");
   });
 
   it("never pushes today once an Activity is Matched to it", async () => {

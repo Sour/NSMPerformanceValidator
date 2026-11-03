@@ -1,9 +1,20 @@
 import { addDays } from "./localDate";
 import { weekStart } from "./trainingWeek";
 
-/** One day of a Week Plan: a Quality Run, an Easy Run or Long Run of a planned duration, or a rest day. Times in seconds. */
+/**
+ * One day of a Week Plan: a Quality Run, an Easy Run or Long Run of a planned duration, or a rest day. Times in seconds.
+ * A Quality Run may have a Rep Pace Target, a plain pace in seconds per mile; one saved before there were none has none.
+ */
 export type WeekPlanDay =
-  | { kind: "Quality Run"; reps: number; repLength: number; recovery: number; warmUp: number; coolDown: number }
+  | {
+      kind: "Quality Run";
+      reps: number;
+      repLength: number;
+      recovery: number;
+      warmUp: number;
+      coolDown: number;
+      repPaceTarget?: number;
+    }
   | { kind: "Easy Run"; duration: number }
   | { kind: "Long Run"; duration: number }
   | { kind: "Rest" };
@@ -131,7 +142,15 @@ export function sameDay(a: WeekPlanDay | undefined, b: WeekPlanDay | undefined):
 function canonical(day: WeekPlanDay): WeekPlanDay {
   switch (day.kind) {
     case "Quality Run":
-      return { kind: day.kind, reps: day.reps, repLength: day.repLength, recovery: day.recovery, warmUp: day.warmUp, coolDown: day.coolDown };
+      return {
+        kind: day.kind,
+        reps: day.reps,
+        repLength: day.repLength,
+        recovery: day.recovery,
+        warmUp: day.warmUp,
+        coolDown: day.coolDown,
+        repPaceTarget: day.repPaceTarget,
+      };
     case "Easy Run":
     case "Long Run":
       return { kind: day.kind, duration: day.duration };

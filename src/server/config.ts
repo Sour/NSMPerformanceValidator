@@ -44,6 +44,8 @@ export const config = {
   syncInterval: parseInterval(process.env.SYNC_INTERVAL ?? "30m"),
   /** The runner's own LT1 HR in bpm; null to assume it from LTHR. */
   lt1Hr: parseLt1Hr(process.env.LT1_HR),
+  /** The runner's Garmin Personal API key, to sync running LTHR and Max HR from; null to leave them as they are. */
+  garminApiKey: process.env.GARMIN_PERSONAL_API_KEY?.trim() || null,
 };
 
 /** The athlete's time zone, which Training Weeks follow; set TZ to change it. */

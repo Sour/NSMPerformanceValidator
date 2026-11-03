@@ -121,3 +121,22 @@ export const planSuggestionDismissals = sqliteTable(
   },
   (t) => [primaryKey({ columns: [t.week, t.suggestionId] })],
 );
+
+/**
+ * How syncing the running LTHR and Max HR from Garmin is going (ADR 0007); a single row with id 1, absent until a sync
+ * with a Garmin key has run.
+ */
+export const garminSync = sqliteTable("garmin_sync", {
+  id: integer("id").primaryKey(),
+  /** Why Garmin could not be read, since `failingSince`; null while it can. */
+  failure: text("failure"),
+  /** When Garmin first failed in the current run of failures, as an ISO timestamp. */
+  failingSince: text("failing_since"),
+  /** When the latest change from Garmin was written to intervals.icu, as an ISO timestamp; null before the first. */
+  changedAt: text("changed_at"),
+  /** The Run LTHR and Max HR before and after the latest change, in bpm; each pair null when that one did not change. */
+  lthrFrom: real("lthr_from"),
+  lthrTo: real("lthr_to"),
+  maxHrFrom: real("max_hr_from"),
+  maxHrTo: real("max_hr_to"),
+});

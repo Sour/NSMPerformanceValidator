@@ -2,8 +2,10 @@ import { addDays, localDate } from "../domain/localDate";
 import { isRun, matchActivities, type Activity, type PlannedWorkout } from "../domain/matching";
 import { runType } from "../domain/runType";
 import type { Db } from "./db";
+import { GarminError, type GarminClient, type RunningThresholds } from "./garmin";
 import {
   eventVersion,
+  hasRunSettings,
   hasSpeedStream,
   isNsmEvent,
   runLthr,
@@ -21,6 +23,7 @@ import {
   loadActivities,
   loadCrossTraining,
   loadFitnessStart,
+  loadGarminSyncStatus,
   loadPlannedWorkouts,
   loadSyncBackfills,
   loadSyncStatus,
@@ -29,10 +32,12 @@ import {
   saveActivity,
   saveAthleteSettings,
   saveFitnessStart,
+  saveGarminSyncStatus,
   saveStreams,
   saveSync,
   saveSyncBackfills,
   saveWeekPlan,
+  type AthleteSettings,
 } from "./store";
 
 /** How far back the first sync looks for the first [NSM] Planned Workout. */
@@ -58,8 +63,9 @@ export interface SyncResult {
  * Once a sync has stored data, later ones only re-fetch from shortly before it, except that Cross-Training is fetched
  * from the first [NSM] Planned Workout until it has been once, as it was not synced before.
  * Until a Planned Workout is tagged [NSM], stored data is left as it is.
+ * With a `garmin` client, it first brings the intervals.icu Run settings in step with the watch's (ADR 0007).
  */
-export async function sync(db: Db, client: IntervalsClient, today: string): Promise<SyncResult> {
+export async function sync(db: Db, client: IntervalsClient, today: string, garmin: GarminClient | null = null): Promise<SyncResult> {
   const storedStart = loadPlannedWorkouts(db)[0]?.date;
   const syncedThrough = loadSyncStatus(db)?.syncedThrough;
   const incremental = storedStart !== undefined && syncedThrough != null;
@@ -112,7 +118,7 @@ export async function sync(db: Db, client: IntervalsClient, today: string): Prom
   saveSyncBackfills(db, { crossTrainingFrom: nsmStart });
   flagChangedWeekPlans(db, today);
   await backfillStreams(db, client, new Set(streams.keys()));
-  await syncAthleteSettings(db, client);
+  await syncAthleteSettings(db, client, garmin);
   await syncFitnessStart(db, client);
   return { nsmStart, plannedWorkouts: planned.length, activities: runningActivities.length, crossTraining: crossTraining.length };
 }
@@ -162,13 +168,51 @@ async function crossTrainingStreams(client: IntervalsClient, id: string): Promis
 }
 
 /**
- * Stores the intervals.icu Threshold Pace, Max HR and LTHR from the athlete's Run settings. The Threshold Pace is only a
- * reference beside LT2 Pace, without Max HR only Easy Pace goes, and without LTHR only pushing Quality Runs, so a
- * failed request clears them rather than failing the sync.
+ * Stores the intervals.icu Threshold Pace, Max HR and LTHR from the athlete's Run settings, once those are in step with
+ * Garmin's when there is a `garmin` client. The Threshold Pace is only a reference beside LT2 Pace, without Max HR only
+ * Easy Pace goes, and without LTHR only pushing Quality Runs, so a failed request clears them rather than failing the
+ * sync.
  */
-async function syncAthleteSettings(db: Db, client: IntervalsClient): Promise<void> {
+async function syncAthleteSettings(db: Db, client: IntervalsClient, garmin: GarminClient | null): Promise<void> {
   const athlete = await client.athlete().catch(() => null);
-  saveAthleteSettings(db, { runThresholdPace: runThresholdPace(athlete), maxHr: runMaxHr(athlete), lthr: runLthr(athlete) });
+  let thresholds = { lthr: runLthr(athlete), maxHr: runMaxHr(athlete) };
+  if (garmin === null) clearGarminFailure(db);
+  else if (hasRunSettings(athlete)) thresholds = await syncRunningThresholds(db, client, garmin, thresholds);
+  saveAthleteSettings(db, { runThresholdPace: runThresholdPace(athlete), ...thresholds });
+}
+
+/** Without a Garmin key there is nothing to fail, so a failure recorded while there was one no longer shows. */
+function clearGarminFailure(db: Db): void {
+  const status = loadGarminSyncStatus(db);
+  if (status.failure !== null) saveGarminSyncStatus(db, { ...status, failure: null });
+}
+
+type Thresholds = Pick<AthleteSettings, "lthr" | "maxHr">;
+
+/**
+ * Writes the running LTHR and Max HR the watch detects to the intervals.icu Run settings, those of `current` that
+ * differ, and records the change; returns the Run settings' thresholds as they now are. A Garmin failure never fails the
+ * sync: it leaves them as they are and is recorded, with when Garmin started failing, until Garmin is read again.
+ */
+async function syncRunningThresholds(db: Db, client: IntervalsClient, garmin: GarminClient, current: Thresholds): Promise<Thresholds> {
+  const status = loadGarminSyncStatus(db);
+  let measured: RunningThresholds;
+  try {
+    measured = await garmin.runningThresholds();
+  } catch (e) {
+    console.warn("Garmin thresholds not synced:", e);
+    const kind = e instanceof GarminError ? e.kind : "Unexpected";
+    saveGarminSyncStatus(db, { ...status, failure: { kind, since: status.failure?.since ?? new Date().toISOString() } });
+    return current;
+  }
+  const lthr = measured.lthr !== current.lthr ? { from: current.lthr, to: measured.lthr } : null;
+  const maxHr = measured.maxHr !== current.maxHr ? { from: current.maxHr, to: measured.maxHr } : null;
+  if (lthr !== null || maxHr !== null) {
+    await client.updateRunSportSettings({ ...(lthr && { lthr: lthr.to }), ...(maxHr && { max_hr: maxHr.to }) });
+  }
+  const lastChange = lthr !== null || maxHr !== null ? { at: new Date().toISOString(), lthr, maxHr } : status.lastChange;
+  saveGarminSyncStatus(db, { failure: null, lastChange });
+  return measured;
 }
 
 /**

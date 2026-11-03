@@ -3,6 +3,7 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { createApp } from "./app";
 import { config, localToday } from "./config";
 import { openDb } from "./db";
+import { createGarminClient } from "./garmin";
 import { createIntervalsClient } from "./intervals";
 import { createIntervalsDestination } from "./intervalsDestination";
 import { refetchActivity, sync } from "./sync";
@@ -10,7 +11,8 @@ import { createSyncRunner } from "./syncRunner";
 
 const db = openDb(config.databasePath);
 const client = createIntervalsClient(config.athleteId, config.apiKey);
-const syncRunner = createSyncRunner(db, () => sync(db, client, localToday()));
+const garmin = config.garminApiKey === null ? null : createGarminClient(config.garminApiKey);
+const syncRunner = createSyncRunner(db, () => sync(db, client, localToday(), garmin));
 
 const app = createApp(
   db,

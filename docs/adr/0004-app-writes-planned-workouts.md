@@ -6,5 +6,6 @@ The app takes over plan building from the NSM app: the runner lays out a Week Pl
 
 - A push only replaces events that carry our ownership marker, and never touches a Planned Workout whose day has passed. The exception is the first push of a Training Week, which, after confirmation, deletes the NSM-app workouts on that week's remaining days so Matching does not see two workouts on one day.
 - Edits made on intervals.icu to an owned workout are overwritten by the next push; the app warns first.
-- LTHR and Max HR for new workouts are read from the runner's intervals.icu Run settings. Garmin's auto-detected values do not reach intervals.icu, so the runner copies them over by hand.
+- LTHR and Max HR for new workouts are read from the runner's intervals.icu Run settings. Garmin's auto-detected values do not reach intervals.icu, so the runner copies them over by hand. _(Superseded by [ADR 0007](0007-running-thresholds-from-garmin.md): the app now syncs the running values from Garmin.)_
+- A Quality Run's Rep steps may carry a Rep Pace Target, a pace band of ±5 s/mi, instead of the 90–98% LTHR heart-rate target. This is the one departure from the NSM app's step format. The name still carries the bpm range, so LTHR, Over Target and Rep detection read it as before.
 - Pushing is kept behind one seam so a later Garmin Training API destination can replace intervals.icu without changing the planner.

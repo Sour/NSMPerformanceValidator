@@ -144,10 +144,16 @@ h2 {
   opacity: 0.6;
 }
 
-.sync .error {
+.sync .error,
+.sync .note {
   flex-basis: 100%;
   margin: 0;
   text-align: right;
+}
+
+.sync .note {
+  font-size: 0.875rem;
+  color: var(--muted);
 }
 
 .section-title {

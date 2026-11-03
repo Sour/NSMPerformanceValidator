@@ -25,7 +25,15 @@ import {
 import { weeklyVolume, type VolumeWeek } from "../domain/weeklyVolume";
 import type { Db } from "./db";
 import { analysedActivities, analysedPlannedWorkouts, easyRuns, fitness, qualityRuns } from "./analysis";
-import { loadPlannedWorkouts, loadAthleteSettings, loadSyncStatus, type StoredActivity, type StoredWeekPlan } from "./store";
+import {
+  loadAthleteSettings,
+  loadGarminSyncStatus,
+  loadPlannedWorkouts,
+  loadSyncStatus,
+  type GarminSyncStatus,
+  type StoredActivity,
+  type StoredWeekPlan,
+} from "./store";
 import type { RefetchOutcome } from "./sync";
 import type { SyncRunner } from "./syncRunner";
 import {
@@ -94,6 +102,8 @@ export interface SyncStatusResponse {
   lastError: string | null;
   /** Whether a sync is running now. */
   running: boolean;
+  /** How syncing the running LTHR and Max HR from Garmin is going. */
+  garmin: GarminSyncStatus;
 }
 
 /** Why `week` cannot be planned on `today`: it is not a Monday, or not the current or next Training Week's. */
@@ -123,6 +133,7 @@ export function createApp(
       lastSucceededAt: status?.succeededAt ?? null,
       lastError: status?.error ?? null,
       running: syncRunner.running,
+      garmin: loadGarminSyncStatus(db),
     };
   };
 

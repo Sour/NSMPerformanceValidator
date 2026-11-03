@@ -13,6 +13,8 @@ INTERVALS_API_KEY=...
 
 Optional: `DATABASE_PATH` (default `data/nsm.db`), `PORT` (default `3000`), `SYNC_INTERVAL` (default `30m`; also takes e.g. `1h` or `90s`) and `LT1_HR` (your LT1 heart rate in bpm, e.g. `155`, from a test; without it, LT1 HR is assumed to be 88% of LTHR).
 
+Optional: `GARMIN_PERSONAL_API_KEY`, a Garmin Connect Personal API key. With it, each sync copies the running LTHR and Max HR your Garmin watch detects into your intervals.icu Run settings when they differ, and the sync bar shows what changed ([ADR 0007](docs/adr/0007-running-thresholds-from-garmin.md)). Create the key in Garmin Connect at **Settings → Personal API Token** (`connect.garmin.com/app/settings/personalApiToken`); it is shown once and expires after at most a year (30, 90, 180 or 365 days, chosen when you create it). Once it is rejected or expired the sync bar says so until you set a new one; the rest of the sync carries on. Without it, set LTHR and Max HR in intervals.icu yourself.
+
 ```
 npm install
 npm run sync    # pull Planned Workouts, running Activities and Cross-Training into SQLite once
@@ -35,7 +37,7 @@ The app has no login, so keep it on the LAN.
 
 1. The repo is private, so its image is too. On GitHub, create a classic personal access token with only the `read:packages` scope. On the Unraid console run `docker login ghcr.io -u <github-user>` and paste the token as the password.
 2. Copy `unraid/nsm-performance-validator.xml` to `/boot/config/plugins/dockerMan/templates-user/my-NSMPerformanceValidator.xml` on the Unraid flash drive (e.g. through the `flash` share).
-3. In **Docker → Add Container**, pick **NSMPerformanceValidator** under **Template**, fill in the intervals.icu Athlete ID and API Key, and adjust the port, `/data` path (default `/mnt/user/appdata/nsm`), Sync Interval, LT1 HR and Time Zone if needed. Without the template, set the same fields by hand: repository `ghcr.io/sour/nsmperformancevalidator:latest`, container port `3000`, container path `/data`, and the variables `INTERVALS_ATHLETE_ID`, `INTERVALS_API_KEY`, `SYNC_INTERVAL`, `LT1_HR` and `TZ`.
+3. In **Docker → Add Container**, pick **NSMPerformanceValidator** under **Template**, fill in the intervals.icu Athlete ID and API Key, and adjust the port, `/data` path (default `/mnt/user/appdata/nsm`), Sync Interval, LT1 HR, Garmin Personal API Key and Time Zone if needed. Without the template, set the same fields by hand: repository `ghcr.io/sour/nsmperformancevalidator:latest`, container port `3000`, container path `/data`, and the variables `INTERVALS_ATHLETE_ID`, `INTERVALS_API_KEY`, `SYNC_INTERVAL`, `LT1_HR`, `GARMIN_PERSONAL_API_KEY` and `TZ`.
 4. To update, use **Check for Updates** on the Docker tab, or pin a commit SHA tag instead of `latest`.
 
 The API key is only read by the server; the page never sees it.

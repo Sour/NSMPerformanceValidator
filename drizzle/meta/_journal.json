@@ -57,6 +57,13 @@
       "when": 1793595390904,
       "tag": "0007_fitness_start",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1793681215809,
+      "tag": "0008_garmin_sync",
+      "breakpoints": true
     }
   ]
 }

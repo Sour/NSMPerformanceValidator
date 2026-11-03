@@ -4,11 +4,13 @@ import type { FitnessStart } from "../domain/fitness";
 import type { Activity, PlannedWorkout } from "../domain/matching";
 import type { PushedDay, WeekPlanDay } from "../domain/weekPlan";
 import type { Db } from "./db";
+import type { GarminFailure } from "./garmin";
 import {
   activities,
   athleteSettings,
   crossTraining,
   fitnessStart,
+  garminSync,
   plannedWorkouts,
   plannerSettings,
   planSuggestionDismissals,
@@ -209,6 +211,50 @@ export function historyStart(db: Db): string | null {
     db.select({ date: crossTraining.date }).from(crossTraining).orderBy(asc(crossTraining.date)).limit(1).get(),
   ];
   return firsts.flatMap((row) => (row ? [row.date] : [])).sort()[0] ?? null;
+}
+
+const GARMIN_SYNC_ID = 1;
+
+/** One threshold's value before and after a change, in bpm. */
+export interface ThresholdChange {
+  from: number | null;
+  to: number;
+}
+
+/** How syncing the running LTHR and Max HR from Garmin is going. */
+export interface GarminSyncStatus {
+  /** Why Garmin could not be read, and since when (an ISO timestamp); null while it can. */
+  failure: { kind: GarminFailure; since: string } | null;
+  /** The latest change written to intervals.icu from Garmin; each threshold null when it did not change. */
+  lastChange: { at: string; lthr: ThresholdChange | null; maxHr: ThresholdChange | null } | null;
+}
+
+/** How syncing from Garmin is going; no failure and no change before a sync with a Garmin key has run. */
+export function loadGarminSyncStatus(db: Db): GarminSyncStatus {
+  const row = db.select().from(garminSync).where(eq(garminSync.id, GARMIN_SYNC_ID)).get();
+  const change = (from: number | null | undefined, to: number | null | undefined): ThresholdChange | null =>
+    to == null ? null : { from: from ?? null, to };
+  return {
+    failure: row?.failure && row.failingSince ? { kind: row.failure as GarminFailure, since: row.failingSince } : null,
+    lastChange: row?.changedAt
+      ? { at: row.changedAt, lthr: change(row.lthrFrom, row.lthrTo), maxHr: change(row.maxHrFrom, row.maxHrTo) }
+      : null,
+  };
+}
+
+/** Records how syncing from Garmin is going, replacing what was recorded. */
+export function saveGarminSyncStatus(db: Db, { failure, lastChange }: GarminSyncStatus): void {
+  const row = {
+    id: GARMIN_SYNC_ID,
+    failure: failure?.kind ?? null,
+    failingSince: failure?.since ?? null,
+    changedAt: lastChange?.at ?? null,
+    lthrFrom: lastChange?.lthr?.from ?? null,
+    lthrTo: lastChange?.lthr?.to ?? null,
+    maxHrFrom: lastChange?.maxHr?.from ?? null,
+    maxHrTo: lastChange?.maxHr?.to ?? null,
+  };
+  db.insert(garminSync).values(row).onConflictDoUpdate({ target: garminSync.id, set: row }).run();
 }
 
 const ATHLETE_SETTINGS_ID = 1;

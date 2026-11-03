@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { openDb } from "./db";
+import { GarminError, type GarminClient, type RunningThresholds } from "./garmin";
 import { eventVersion, type IntervalsActivity, type IntervalsClient, type IntervalsEvent } from "./intervals";
 import {
   loadActivities,
   loadAthleteSettings,
   loadCrossTraining,
   loadFitnessStart,
+  loadGarminSyncStatus,
   loadPlannedWorkouts,
   loadSyncStatus,
   loadWeekPlan,
@@ -101,6 +103,11 @@ function fakeClient(
     },
     deleteEvent: async () => {
       throw new Error("Sync never writes to intervals.icu");
+    },
+    updateRunSportSettings: async (fields) => {
+      requests.push(`sport-settings Run ${JSON.stringify(fields)}`);
+      const run = (athlete as { sportSettings?: { types: string[] }[] }).sportSettings?.find((s) => s.types.includes("Run"));
+      Object.assign(run ?? {}, fields);
     },
   };
 }
@@ -587,5 +594,135 @@ describe("sync and pushed Week Plans", () => {
     saveWeekPlan(db, plan());
     await sync(db, fakeClient([...events, { ...pushedEvent, name: "Easy Run (done)" }], activities), "2026-11-06");
     expect(changed(db)).toBe(false);
+  });
+});
+
+/** A Garmin client giving each of `answers` in turn, the last one from then on; an Error fails that read. */
+function fakeGarmin(...answers: (RunningThresholds | Error)[]): GarminClient & { reads: number } {
+  const garmin = {
+    reads: 0,
+    async runningThresholds() {
+      const answer = answers[Math.min(garmin.reads++, answers.length - 1)]!;
+      if (answer instanceof Error) throw answer;
+      return answer;
+    },
+  };
+  return garmin;
+}
+
+describe("sync of running thresholds from Garmin", () => {
+  const events = [event(1, "2026-09-28", "Easy Run")];
+  const athlete = () => ({ sportSettings: [{ types: ["Run"], threshold_pace: 4.47, max_hr: 197, lthr: 175 }] });
+  const writes = (client: FakeClient) => client.requests.filter((r) => r.startsWith("sport-settings"));
+
+  it("writes Garmin's running LTHR and Max HR to the Run settings when they differ, before storing them", async () => {
+    const db = openDb(":memory:");
+    const client = fakeClient(events, [], athlete());
+
+    await sync(db, client, "2026-10-02", fakeGarmin({ lthr: 173, maxHr: 194 }));
+
+    expect(writes(client)).toEqual(['sport-settings Run {"lthr":173,"max_hr":194}']);
+    expect(loadAthleteSettings(db)).toMatchObject({ lthr: 173, maxHr: 194 });
+    expect(loadGarminSyncStatus(db)).toEqual({
+      failure: null,
+      lastChange: { at: expect.any(String), lthr: { from: 175, to: 173 }, maxHr: { from: 197, to: 194 } },
+    });
+  });
+
+  it("writes only the threshold that changed", async () => {
+    const db = openDb(":memory:");
+    const client = fakeClient(events, [], athlete());
+
+    await sync(db, client, "2026-10-02", fakeGarmin({ lthr: 173, maxHr: 197 }));
+
+    expect(writes(client)).toEqual(['sport-settings Run {"lthr":173}']);
+    expect(loadGarminSyncStatus(db).lastChange).toMatchObject({ lthr: { from: 175, to: 173 }, maxHr: null });
+  });
+
+  it("writes nothing and records no change when they are already equal, keeping the latest change", async () => {
+    const db = openDb(":memory:");
+    const client = fakeClient(events, [], athlete());
+    const garmin = fakeGarmin({ lthr: 173, maxHr: 194 });
+    await sync(db, client, "2026-10-02", garmin);
+    const { lastChange } = loadGarminSyncStatus(db);
+
+    await sync(db, client, "2026-10-03", garmin);
+
+    expect(writes(client)).toHaveLength(1);
+    expect(loadGarminSyncStatus(db)).toEqual({ failure: null, lastChange });
+  });
+
+  it("leaves the sync otherwise successful and writes nothing when Garmin fails", async () => {
+    const db = openDb(":memory:");
+    const client = fakeClient(events, [], athlete());
+
+    await sync(db, client, "2026-10-02", fakeGarmin(new GarminError("Unreachable", "Garmin failed: fetch failed")));
+
+    expect(writes(client)).toEqual([]);
+    expect(loadAthleteSettings(db)).toMatchObject({ lthr: 175, maxHr: 197 });
+    expect(loadSyncStatus(db)).toMatchObject({ error: null, syncedThrough: "2026-10-02" });
+    expect(loadGarminSyncStatus(db).lastChange).toBeNull();
+  });
+
+  it("records when Garmin started failing, and why, keeping that start through later failures", async () => {
+    const db = openDb(":memory:");
+    const client = fakeClient(events, [], athlete());
+    const garmin = fakeGarmin(
+      new GarminError("KeyRejected", "Garmin failed: 401"),
+      new GarminError("Unreachable", "Garmin failed: fetch failed"),
+    );
+
+    await sync(db, client, "2026-10-02", garmin);
+    const first = loadGarminSyncStatus(db).failure;
+    await sync(db, client, "2026-10-03", garmin);
+
+    expect(first).toEqual({ kind: "KeyRejected", since: expect.any(String) });
+    expect(loadGarminSyncStatus(db).failure).toEqual({ kind: "Unreachable", since: first!.since });
+  });
+
+  it("clears the failure once a sync reaches Garmin, whether or not anything changed", async () => {
+    const db = openDb(":memory:");
+    const client = fakeClient(events, [], athlete());
+    const garmin = fakeGarmin(new GarminError("KeyRejected", "Garmin failed: 401"), { lthr: 175, maxHr: 197 });
+
+    await sync(db, client, "2026-10-02", garmin);
+    await sync(db, client, "2026-10-03", garmin);
+
+    expect(loadGarminSyncStatus(db)).toEqual({ failure: null, lastChange: null });
+  });
+
+  it("treats any other error from Garmin as an Unexpected failure", async () => {
+    const db = openDb(":memory:");
+    await sync(db, fakeClient(events, [], athlete()), "2026-10-02", fakeGarmin(new Error("boom")));
+    expect(loadGarminSyncStatus(db).failure).toMatchObject({ kind: "Unexpected" });
+  });
+
+  it("does not ask Garmin when the intervals.icu Run settings could not be read", async () => {
+    const db = openDb(":memory:");
+    const garmin = fakeGarmin({ lthr: 173, maxHr: 194 });
+    await sync(db, fakeClient(events, [], new Error("intervals.icu athlete failed: 500")), "2026-10-02", garmin);
+    await sync(db, fakeClient(events, [], { sportSettings: [] }), "2026-10-03", garmin);
+    expect(garmin.reads).toBe(0);
+  });
+
+  it("without a Garmin key, never asks Garmin nor writes to intervals.icu, and records nothing", async () => {
+    const db = openDb(":memory:");
+    const client = fakeClient(events, [], athlete());
+    await sync(db, client, "2026-10-02");
+    expect(writes(client)).toEqual([]);
+    expect(loadAthleteSettings(db)).toMatchObject({ lthr: 175, maxHr: 197 });
+    expect(loadGarminSyncStatus(db)).toEqual({ failure: null, lastChange: null });
+  });
+
+  it("without a Garmin key, clears a failure recorded while there was one, keeping the latest change", async () => {
+    const db = openDb(":memory:");
+    const client = fakeClient(events, [], athlete());
+    await sync(db, client, "2026-10-02", fakeGarmin({ lthr: 173, maxHr: 194 }));
+    await sync(db, client, "2026-10-03", fakeGarmin(new GarminError("KeyRejected", "Garmin failed: 401")));
+    const { lastChange } = loadGarminSyncStatus(db);
+
+    await sync(db, client, "2026-10-04");
+
+    expect(loadGarminSyncStatus(db)).toEqual({ failure: null, lastChange });
   });
 });

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { formatDuration, formatHoursMinutes } from "../domain/pace";
 import type { PlanSuggestion } from "../domain/planSuggestions";
+import type { RecentRepGap } from "../domain/repPaceTarget";
 import {
   plannedQualityShare,
   plannedRepTime,
@@ -11,23 +12,39 @@ import {
 } from "../domain/weekPlan";
 import type { PlannerSettingsResponse, PlanResponse, PushResponse } from "../server/app";
 import type { NsmAppWorkout } from "../server/planDestination";
-import { activityUrl, formatDate, formatDateTime, formatHr } from "./format";
+import { activityUrl, formatDate, formatDateTime, formatHr, formatPace } from "./format";
 import { SyncBar } from "./SyncBar";
 
 type Kind = WeekPlanDay["kind"];
+type QualityRunDay = Extract<WeekPlanDay, { kind: "Quality Run" }>;
 const KINDS: Kind[] = ["Quality Run", "Easy Run", "Long Run", "Rest"];
+/** The Rep Length a day made a Quality Run starts with, in seconds. */
+const NEW_REP_LENGTH = 360;
 
-/** What a day becomes when its Run Type is changed to `kind`, keeping its duration between Easy Run and Long Run. */
-function dayOfKind(kind: Kind, from: WeekPlanDay): WeekPlanDay {
+/** Per Rep Length in seconds, the Rep Pace Target last given for it. */
+type RepPaceTargets = PlanResponse["repPaceTargets"];
+
+/**
+ * What a day becomes when its Run Type is changed to `kind`, keeping its duration between Easy Run and Long Run. A new
+ * Quality Run starts with the Rep Pace Target last given for its Rep Length.
+ */
+function dayOfKind(kind: Kind, from: WeekPlanDay, repPaceTargets: RepPaceTargets): WeekPlanDay {
   switch (kind) {
     case "Quality Run":
-      return { kind, reps: 4, repLength: 360, recovery: 90, warmUp: 600, coolDown: 600 };
+      return withRepLength({ kind, reps: 4, repLength: NEW_REP_LENGTH, recovery: 90, warmUp: 600, coolDown: 600 }, NEW_REP_LENGTH, repPaceTargets);
     case "Easy Run":
     case "Long Run":
       return { kind, duration: "duration" in from ? from.duration : kind === "Easy Run" ? 45 * 60 : 80 * 60 };
     case "Rest":
       return { kind };
   }
+}
+
+/** A Quality Run with its Rep Length changed, and its Rep Pace Target the one last given for that Rep Length, if any. */
+function withRepLength(day: QualityRunDay, repLength: number, repPaceTargets: RepPaceTargets): QualityRunDay {
+  const { repPaceTarget: _, ...rest } = day;
+  const last = repPaceTargets[repLength];
+  return { ...rest, repLength, ...(last !== undefined && { repPaceTarget: last }) };
 }
 
 /** What the runner has confirmed for a push. */
@@ -184,7 +201,12 @@ export function PlanPage() {
               {!d.editable && <span className="range">past</span>}
             </header>
             {d.editable ? (
-              <DayEditor day={d.day} onChange={(day) => edit(days.map((x, j) => (j === i ? day : x)))} />
+              <DayEditor
+                day={d.day}
+                repPaceTargets={plan.repPaceTargets}
+                recentRepGaps={plan.recentRepGaps}
+                onChange={(day) => edit(days.map((x, j) => (j === i ? day : x)))}
+              />
             ) : (
               <p className="rest">{describe(d.day)}</p>
             )}
@@ -314,11 +336,21 @@ function Summary({ plan }: { plan: PlanResponse }) {
   );
 }
 
-function DayEditor({ day, onChange }: { day: WeekPlanDay; onChange: (day: WeekPlanDay) => void }) {
+function DayEditor({
+  day,
+  repPaceTargets,
+  recentRepGaps,
+  onChange,
+}: {
+  day: WeekPlanDay;
+  repPaceTargets: RepPaceTargets;
+  recentRepGaps: PlanResponse["recentRepGaps"];
+  onChange: (day: WeekPlanDay) => void;
+}) {
   return (
     <div className="plan-fields">
       <Field label="Run Type" wide>
-        <select value={day.kind} onChange={(e) => onChange(dayOfKind(e.target.value as Kind, day))}>
+        <select value={day.kind} onChange={(e) => onChange(dayOfKind(e.target.value as Kind, day, repPaceTargets))}>
           {KINDS.map((k) => (
             <option key={k} value={k}>
               {k === "Rest" ? "Rest day" : k}
@@ -336,10 +368,23 @@ function DayEditor({ day, onChange }: { day: WeekPlanDay; onChange: (day: WeekPl
               onChange={(e) => Number(e.target.value) >= 1 && onChange({ ...day, reps: Math.round(Number(e.target.value)) })}
             />
           </Field>
-          <DurationField label="Rep Length" seconds={day.repLength} min={1} onChange={(repLength) => onChange({ ...day, repLength })} />
+          <DurationField
+            label="Rep Length"
+            seconds={day.repLength}
+            min={1}
+            onChange={(repLength) => onChange(withRepLength(day, repLength, repPaceTargets))}
+          />
           <DurationField label="Recovery" seconds={day.recovery} onChange={(recovery) => onChange({ ...day, recovery })} />
           <DurationField label="Warm-up (est.)" seconds={day.warmUp} onChange={(warmUp) => onChange({ ...day, warmUp })} />
           <DurationField label="Cool-down (est.)" seconds={day.coolDown} onChange={(coolDown) => onChange({ ...day, coolDown })} />
+          <RepPaceField
+            seconds={day.repPaceTarget ?? null}
+            onChange={(repPaceTarget) => {
+              const { repPaceTarget: _, ...rest } = day;
+              onChange(repPaceTarget === null ? rest : { ...rest, repPaceTarget });
+            }}
+          />
+          <RepGapHint recent={recentRepGaps[day.repLength]} />
           <p className="field-note">
             Warm-up and cool-down end when you press lap; their times are estimates for the planned total.
           </p>
@@ -421,6 +466,49 @@ function DurationField({
   );
 }
 
+/** The fastest Rep Pace Target the server takes, in seconds per mile. */
+const MIN_REP_PACE_TARGET = 60;
+
+/**
+ * A Quality Run's optional Rep Pace Target, typed as m:ss per mile and left empty for none; saved when it is left or
+ * Enter is pressed.
+ */
+function RepPaceField({ seconds, onChange }: { seconds: number | null; onChange: (seconds: number | null) => void }) {
+  const shown = seconds === null ? "" : formatDuration(seconds);
+  const [text, setText] = useState(shown);
+  useEffect(() => setText(shown), [shown]);
+  const commit = () => {
+    const parsed = text.trim() === "" ? null : parseDuration(text);
+    const valid = text.trim() === "" || (parsed !== null && parsed >= MIN_REP_PACE_TARGET);
+    if (!valid) setText(shown);
+    else if (parsed !== seconds) onChange(parsed);
+  };
+  return (
+    <Field label="Rep Pace Target (/mi)">
+      <input
+        className="duration"
+        value={text}
+        inputMode="numeric"
+        placeholder="none"
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => e.key === "Enter" && commit()}
+      />
+    </Field>
+  );
+}
+
+/** The Rep GAP the latest Complete Quality Run of this Rep Length ran, for reference beside its Rep Pace Target. */
+function RepGapHint({ recent }: { recent: RecentRepGap | undefined }) {
+  if (!recent) return null;
+  return (
+    <p className="field-note">
+      Recent Rep GAP {formatPace(recent.repGap)} on {formatDate(recent.date)}
+      {recent.overTarget && <span className="over-target"> · Over Target</span>}
+    </p>
+  );
+}
+
 /** "6:00" or "6" (minutes) as seconds; null when it is neither. */
 function parseDuration(text: string): number | null {
   const match = /^\s*(\d+)(?::(\d{1,2}))?\s*$/.exec(text);
@@ -433,7 +521,9 @@ function parseDuration(text: string): number | null {
 function describe(day: WeekPlanDay): string {
   switch (day.kind) {
     case "Quality Run":
-      return `${day.reps} × ${formatDuration(day.repLength)}, ${formatDuration(day.recovery)} rec · warm-up and cool-down to lap press`;
+      return `${day.reps} × ${formatDuration(day.repLength)}, ${formatDuration(day.recovery)} rec${
+        day.repPaceTarget === undefined ? "" : ` at ${formatDuration(day.repPaceTarget)} /mi`
+      } · warm-up and cool-down to lap press`;
     case "Easy Run":
     case "Long Run":
       return `${day.kind} · ${Math.round(day.duration / 60)} min`;
@@ -497,7 +587,8 @@ function Settings({ settings, onSaved }: { settings: PlannerSettingsResponse; on
       </label>
       <p className="range">
         LTHR {settings.lthr === null ? "not set" : formatHr(settings.lthr)} · Max HR{" "}
-        {settings.maxHr === null ? "not set" : formatHr(settings.maxHr)}, from intervals.icu (change them there, then sync)
+        {settings.maxHr === null ? "not set" : formatHr(settings.maxHr)}, from intervals.icu (kept in step with your Garmin
+        watch when its key is set; otherwise change them there, then sync)
       </p>
       <div className="actions">
         <button type="submit">Save settings</button>

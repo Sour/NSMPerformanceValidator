@@ -1,5 +1,9 @@
 import { formatDuration, formatHoursMinutes, miles, secondsPerMile } from "../domain/pace";
 import type { Volume } from "../domain/weeklyVolume";
+import type { SyncStatusResponse } from "../server/app";
+
+type GarminSyncStatus = SyncStatusResponse["garmin"];
+type ThresholdChange = NonNullable<NonNullable<GarminSyncStatus["lastChange"]>["lthr"]>;
 
 /** A Format as written in the plan, e.g. "4 × 6:00, 1:30 rec". */
 export function formatText(reps: number, repLength: number, recovery: number | null): string {
@@ -48,4 +52,28 @@ export function formatDate(date: string, withWeekday = false): string {
 /** An Activity's page on intervals.icu, its detail view. */
 export function activityUrl(activityId: string): string {
   return `https://intervals.icu/activities/${encodeURIComponent(activityId)}`;
+}
+
+/** A timestamp's day, e.g. "2 Nov". */
+function formatDay(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+}
+
+const GARMIN_FAILURES = {
+  KeyRejected: "Garmin key rejected",
+  Unreachable: "Garmin unreachable",
+  Unexpected: "Garmin gave an unexpected response",
+} as const;
+
+/** The lasting notice of a Garmin failure, e.g. "Garmin key rejected since 2 Nov: thresholds not synced. …". */
+export function garminNotice({ kind, since }: NonNullable<GarminSyncStatus["failure"]>): string {
+  const fix = kind === "KeyRejected" ? " If it has expired, create a new key in Garmin Connect." : "";
+  return `${GARMIN_FAILURES[kind]} since ${formatDay(since)}: thresholds not synced.${fix}`;
+}
+
+/** The latest change from Garmin, e.g. "LTHR 175 → 173, Max HR 197 → 194 from Garmin, 2 Nov". */
+export function thresholdChangeText({ at, lthr, maxHr }: NonNullable<GarminSyncStatus["lastChange"]>): string {
+  const change = (name: string, c: ThresholdChange | null) =>
+    c === null ? [] : [c.from === null ? `${name} set to ${c.to}` : `${name} ${c.from} → ${c.to}`];
+  return `${[...change("LTHR", lthr), ...change("Max HR", maxHr)].join(", ")} from Garmin, ${formatDay(at)}`;
 }

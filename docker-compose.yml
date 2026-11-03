@@ -14,4 +14,6 @@ services:
       INTERVALS_API_KEY: ${INTERVALS_API_KEY:?set in .env}
       SYNC_INTERVAL: ${SYNC_INTERVAL:-30m}
       LT1_HR: ${LT1_HR:-}
+      # Optional: syncs running LTHR and Max HR from Garmin (see README); expires after at most a year.
+      GARMIN_PERSONAL_API_KEY: ${GARMIN_PERSONAL_API_KEY:-}
       TZ: ${TZ:-America/Los_Angeles}
