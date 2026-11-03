@@ -35,11 +35,15 @@ The planned duration of one Rep (e.g. 10:00, 6:00, 3:00). Progress is only ever 
 _Avoid_: Format (when only the duration is meant)
 
 **Rep**:
-One timed work interval of a Quality Run, run at the planned heart-rate target (90–98% LTHR) and lasting about the Rep Length. Every such interval is a Rep, even beyond the planned rep count. Warm-up, cool-down, recoveries and short efforts such as strides are not Reps.
+One timed work interval of a Quality Run, run at the planned heart-rate target (90–98% LTHR) and lasting about the Rep Length. Every such interval is a Rep, even beyond the planned rep count. Warm-up, cool-down, recoveries and short efforts such as strides are not Reps. A Rep may also be guided by a Rep Pace Target, but its heart-rate target stays its ceiling.
 _Avoid_: Interval, lap, set
 
+**Rep Pace Target**:
+The pace a Quality Run's Reps are guided by on the watch, when the runner gives one: a plain pace (not GAP) per mile, sent as a band of ±5 s/mi around it. It is optional per Quality Run and only for Reps; every other step, and every Easy Run and Long Run, stays on heart rate. A new Quality Run starts with the last Rep Pace Target given for the same Rep Length. It only guides: missing it never changes whether a Quality Run is Complete or Over Target, or whether it counts toward progress.
+_Avoid_: Target pace, threshold pace, Rep GAP (that is what was run)
+
 **LTHR**:
-The runner's lactate-threshold (LT2) heart rate, the anchor of every Quality Run's heart-rate target. It is read from the Planned Workouts rather than set separately: a Rep's target is 90–98% of LTHR, so LTHR follows the plan. New Planned Workouts take their LTHR from the runner's intervals.icu Run settings when they are planned. The current LTHR is the one given by the most recent Quality Run's target, and it is the one every LT1 Pace and LT2 Pace is measured against, past weeks included. Training Load does not use it: it uses the recorded LTHR, the one intervals.icu recorded with each workout from that sport's settings at the time.
+The runner's lactate-threshold (LT2) heart rate, the anchor of every Quality Run's heart-rate target. It is read from the Planned Workouts rather than set separately: a Rep's target is 90–98% of LTHR, so LTHR follows the plan. New Planned Workouts take their LTHR from the runner's intervals.icu Run settings when they are planned, which are kept in step with the LTHR the runner's Garmin watch detects. The current LTHR is the one given by the most recent Quality Run's target, and it is the one every LT1 Pace and LT2 Pace is measured against, past weeks included. Training Load does not use it: it uses the recorded LTHR, the one intervals.icu recorded with each workout from that sport's settings at the time.
 _Avoid_: LT2 HR, threshold HR, max HR
 
 **LT1 HR**:
@@ -55,7 +59,7 @@ A Quality Run in which at least one Rep's average heart rate exceeded the top of
 _Avoid_: Too hard, red zone
 
 **Max HR**:
-The runner's maximum heart rate, as recorded in intervals.icu. It anchors the Easy HR Target. HR Load uses the recorded Max HR, the one intervals.icu recorded with each workout for its sport.
+The runner's maximum heart rate, as recorded in intervals.icu; for running, kept in step with the runner's Garmin watch. It anchors the Easy HR Target. HR Load uses the recorded Max HR, the one intervals.icu recorded with each workout for its sport.
 _Avoid_: Peak HR
 
 **Easy HR Target**:
@@ -171,7 +175,7 @@ A workout's Training Load from its heart rate: Banister's TRIMP over its heart-r
 _Avoid_: hrTSS, TRIMP (alone)
 
 **Planned Training Load**:
-A Planned Workout's estimated Training Load: its HR Load as if each step were run for its duration at the midpoint of its heart-rate target, and a step without a target at the midpoint of the Easy HR Target, against the runner's current LTHR, Max HR and resting HR. Worked out here, never read from intervals.icu.
+A Planned Workout's estimated Training Load: its HR Load as if each step were run for its duration at the midpoint of its heart-rate target (a Rep's is its 90–98% LTHR, even when it has a Rep Pace Target), and a step without a target at the midpoint of the Easy HR Target, against the runner's current LTHR, Max HR and resting HR. Worked out here, never read from intervals.icu.
 _Avoid_: Planned load, estimated TSS
 
 **Fitness**:
