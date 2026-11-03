@@ -177,7 +177,11 @@ export type SyncBackfills = Omit<typeof syncBackfills.$inferSelect, "id">;
 
 export function loadSyncBackfills(db: Db): SyncBackfills {
   const row = db.select().from(syncBackfills).where(eq(syncBackfills.id, SYNC_BACKFILLS_ID)).get();
-  return { crossTrainingFrom: row?.crossTrainingFrom ?? null, speedStreams: row?.speedStreams ?? false };
+  return {
+    crossTrainingFrom: row?.crossTrainingFrom ?? null,
+    speedStreams: row?.speedStreams ?? false,
+    gradeAdjustedSpeedStreams: row?.gradeAdjustedSpeedStreams ?? false,
+  };
 }
 
 /** Records the given catch-ups as done, leaving the others as they are. */

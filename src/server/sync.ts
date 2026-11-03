@@ -6,6 +6,7 @@ import { GarminError, type GarminClient, type RunningThresholds } from "./garmin
 import {
   eventVersion,
   hasRunSettings,
+  hasGradeAdjustedSpeedStream,
   hasSpeedStream,
   isNsmEvent,
   runLthr,
@@ -143,20 +144,22 @@ function flagChangedWeekPlans(db: Db, today: string): void {
 
 /**
  * Fetches the streams of stored Activities and Cross-Training that have none, such as those stored before every
- * workout's streams were. Once, it also re-fetches those stored without a speed stream, from before streams were
- * fetched with speed, except the ones `fetched` just now; a Cross-Training workout whose request fails keeps its own.
+ * workout's streams were. Once each, it also re-fetches those stored without a speed stream, from before streams were
+ * fetched with speed, and those stored without a grade-adjusted speed stream, from before streams were fetched with it,
+ * except the ones `fetched` just now; a Cross-Training workout whose request fails keeps its own.
  */
 async function backfillStreams(db: Db, client: IntervalsClient, fetched: ReadonlySet<string>): Promise<void> {
-  const { speedStreams } = loadSyncBackfills(db);
-  const due = ({ id, streams }: { id: string; streams: unknown }) =>
-    streams === null || (!speedStreams && !fetched.has(id) && !hasSpeedStream(streams));
+  const { speedStreams, gradeAdjustedSpeedStreams } = loadSyncBackfills(db);
+  const outdated = (streams: unknown) =>
+    (!speedStreams && !hasSpeedStream(streams)) || (!gradeAdjustedSpeedStreams && !hasGradeAdjustedSpeedStream(streams));
+  const due = ({ id, streams }: { id: string; streams: unknown }) => streams === null || (!fetched.has(id) && outdated(streams));
   for (const a of loadActivities(db)) if (due(a)) saveStreams(db, a.id, await client.streams(a.id));
   for (const c of loadCrossTraining(db)) {
     if (!due(c)) continue;
     const streams = c.streams === null ? await crossTrainingStreams(client, c.id) : await client.streams(c.id).catch(() => c.streams);
     saveStreams(db, c.id, streams);
   }
-  saveSyncBackfills(db, { speedStreams: true });
+  saveSyncBackfills(db, { speedStreams: true, gradeAdjustedSpeedStreams: true });
 }
 
 /**

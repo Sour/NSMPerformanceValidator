@@ -369,7 +369,7 @@ describe("/api/easy", () => {
   it("has each Run Type's Easy Pace trend over the last 6 Training Weeks, or Not enough data with fewer than 3 runs", async () => {
     // At Easy HR 132 bpm, the reference HR, Easy Pace is Easy GAP.
     const at = (secondsPerMile: number) => ({ gap: 1609.344 / secondsPerMile, average_heartrate: 132 });
-    const { trends } = await easy(
+    const { easyPaceTrends } = await easy(
       [
         event(1, "2026-08-03", "Easy Run"),
         event(2, "2026-09-14", "Easy Run"),
@@ -389,11 +389,11 @@ describe("/api/easy", () => {
     );
 
     // Today is Saturday 24 Oct, so the window runs from Monday 14 Sep. The line loses 10 s/mi every 35 days.
-    const easyTrend = trends["Easy Run"];
+    const easyTrend = easyPaceTrends["Easy Run"];
     expect(easyTrend).toMatchObject({ from: "2026-09-14", to: "2026-10-24" });
     expect(secondsPerMile(easyTrend.line!.start)).toBeCloseTo(600, 6);
     expect(secondsPerMile(easyTrend.line!.end)).toBeCloseTo(600 - (10 * 40) / 35, 6);
-    expect(trends["Long Run"]).toEqual({ from: "2026-09-14", to: "2026-10-24", line: null, greyZoneRuns: 0 });
+    expect(easyPaceTrends["Long Run"]).toEqual({ from: "2026-09-14", to: "2026-10-24", line: null, greyZoneRuns: 0 });
   });
 
   it("gives each run its Walk Break time: stretches of at least 15 seconds below 130 steps/min, stops left out", async () => {
@@ -458,7 +458,7 @@ describe("/api/easy", () => {
 
   it("leaves Grey Zone Runs out of the trend, and counts them in the window", async () => {
     const at = (secondsPerMile: number) => ({ gap: 1609.344 / secondsPerMile, average_heartrate: 132 });
-    const { runs, trends } = await easy(
+    const { runs, easyPaceTrends: trends } = await easy(
       [
         event(1, "2026-09-07", "Easy Run"),
         event(2, "2026-09-14", "Easy Run"),

@@ -1,0 +1,1 @@
+ALTER TABLE `sync_backfills` ADD `grade_adjusted_speed_streams` integer DEFAULT false NOT NULL;

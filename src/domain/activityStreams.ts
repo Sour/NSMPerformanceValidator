@@ -8,6 +8,8 @@ export interface ActivityStreams {
   cadence: (number | null)[] | null;
   /** Speed in metres per second, 0 when stopped; null when not recorded, as for weight training. */
   velocity: (number | null)[] | null;
+  /** Grade-adjusted speed in metres per second, intervals.icu's; null when not recorded or not fetched. */
+  gradeAdjustedVelocity: (number | null)[] | null;
 }
 
 /** Below 130 steps/min, 65 per foot, the runner is walking. */
@@ -62,6 +64,14 @@ function recordedSeconds(time: number[]): number[] {
     const gap = i === 0 ? (time[1] ?? t) - t : t - time[i - 1]!;
     return gap > MAX_SAMPLE_GAP ? 0 : gap;
   });
+}
+
+/**
+ * How long each sample covers as moving time: as `sampleSeconds`, and a stop by speed (0) covers nothing either, as in
+ * Training Load. Walking is moving time.
+ */
+export function movingSeconds(streams: ActivityStreams): number[] {
+  return sampleSeconds(streams).map((seconds, i) => (streams.velocity?.[i] === 0 ? 0 : seconds));
 }
 
 /** How long each sample covers, as `recordedSeconds`, but a full stop (cadence 0) covers nothing: it is not moving time. */

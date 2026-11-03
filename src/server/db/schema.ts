@@ -22,7 +22,7 @@ export const activities = sqliteTable("activities", {
   raw: text("raw", { mode: "json" }).notNull(),
   /** intervals.icu's detected intervals response; fetched for Matched Quality Runs only. */
   intervals: text("intervals", { mode: "json" }),
-  /** intervals.icu's time, heart-rate, cadence and speed streams response; null until fetched. */
+  /** intervals.icu's time, heart-rate, cadence, speed and grade-adjusted speed streams response; null until fetched. */
   streams: text("streams", { mode: "json" }),
   syncedAt: text("synced_at").notNull(),
 });
@@ -35,7 +35,7 @@ export const crossTraining = sqliteTable("cross_training", {
   name: text("name").notNull(),
   movingTime: integer("moving_time").notNull(),
   raw: text("raw", { mode: "json" }).notNull(),
-  /** intervals.icu's time, heart-rate, cadence and speed streams response; null until fetched. */
+  /** intervals.icu's time, heart-rate, cadence, speed and grade-adjusted speed streams response; null until fetched. */
   streams: text("streams", { mode: "json" }),
   syncedAt: text("synced_at").notNull(),
 });
@@ -59,6 +59,8 @@ export const syncBackfills = sqliteTable("sync_backfills", {
   crossTrainingFrom: text("cross_training_from"),
   /** Every stored workout's streams have been fetched with a speed stream where intervals.icu has one. */
   speedStreams: integer("speed_streams", { mode: "boolean" }).notNull().default(false),
+  /** Every stored workout's streams have been fetched with a grade-adjusted speed stream where intervals.icu has one. */
+  gradeAdjustedSpeedStreams: integer("grade_adjusted_speed_streams", { mode: "boolean" }).notNull().default(false),
 });
 
 /**

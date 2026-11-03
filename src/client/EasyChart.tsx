@@ -3,9 +3,9 @@ import { GridComponent, LegendComponent, TooltipComponent } from "echarts/compon
 import * as echarts from "echarts/core";
 import { SVGRenderer } from "echarts/renderers";
 import { useEffect, useRef } from "react";
-import type { EasyPaceTrend, EasyRunType, EasyTrend, EasyTrendRun } from "../domain/easyTrend";
+import type { EasyRunTrend, EasyRunType, EasyTrend, EasyTrendRun } from "../domain/easyTrend";
 import { formatDuration, secondsPerMile } from "../domain/pace";
-import { escapeHtml, formatDate, formatHr, formatPace } from "./format";
+import { escapeHtml, formatAerobicDecoupling, formatAerobicDecouplingChange, formatDate, formatHr, formatPace } from "./format";
 import { usePrefersDark } from "./usePrefersDark";
 
 echarts.use([LineChart, ScatterChart, BarChart, GridComponent, LegendComponent, TooltipComponent, SVGRenderer]);
@@ -36,15 +36,28 @@ export function EasyChart({ easy }: { easy: EasyTrend }) {
 
 /** Each Run Type's change in Easy Pace over the window, e.g. "Easy Run −8 s/mi over 6 weeks · 2 Grey Zone Runs". */
 function Headlines({ easy }: { easy: EasyTrend }) {
+  return <TrendHeadlines runs={easy.runs} trends={easy.easyPaceTrends} change={paceChange} />;
+}
+
+/** Each Run Type's change over the window, as `change` words it, and its Grey Zone Runs, left out of the trend. */
+function TrendHeadlines({
+  runs,
+  trends,
+  change,
+}: {
+  runs: EasyTrendRun[];
+  trends: Record<EasyRunType, EasyRunTrend>;
+  change: (trend: EasyRunTrend) => string;
+}) {
   return (
     <div className="easy-headlines">
-      {runTypesIn(easy.runs).map((t) => (
+      {runTypesIn(runs).map((t) => (
         <p key={t} className="easy-headline">
-          <span className="threshold-name">{t}</span> <strong>{change(easy.trends[t])}</strong>
-          {easy.trends[t].greyZoneRuns > 0 && (
+          <span className="threshold-name">{t}</span> <strong>{change(trends[t])}</strong>
+          {trends[t].greyZoneRuns > 0 && (
             <span className="range">
               {" "}
-              · {easy.trends[t].greyZoneRuns} Grey Zone Run{easy.trends[t].greyZoneRuns === 1 ? "" : "s"}
+              · {trends[t].greyZoneRuns} Grey Zone Run{trends[t].greyZoneRuns === 1 ? "" : "s"}
             </span>
           )}
         </p>
@@ -54,29 +67,60 @@ function Headlines({ easy }: { easy: EasyTrend }) {
 }
 
 /** The trend line's change in seconds per mile; negative is faster. */
-function change(trend: EasyPaceTrend): string {
+function paceChange(trend: EasyRunTrend): string {
   if (trend.line === null) return "Not enough data";
   const seconds = Math.round(secondsPerMile(trend.line.end) - secondsPerMile(trend.line.start));
   return `${seconds > 0 ? "+" : seconds < 0 ? "−" : "±"}${Math.abs(seconds)} s/mi over 6 weeks`;
 }
 
 function EasyPaceChart({ easy }: { easy: EasyTrend }) {
+  return <Chart easy={easy} option={chartOption} />;
+}
+
+/** An ECharts chart of `easy` drawn by `option` in the page's colours, redrawn when they change. */
+function Chart({ easy, option }: { easy: EasyTrend; option: (easy: EasyTrend, c: ChartColors) => echarts.EChartsCoreOption }) {
   const ref = useRef<HTMLDivElement>(null);
   const dark = usePrefersDark();
 
   useEffect(() => {
     const el = ref.current!;
     const chart = echarts.init(el, null, { renderer: "svg" });
-    chart.setOption(chartOption(easy, chartColors()));
+    chart.setOption(option(easy, chartColors()));
     const observer = new ResizeObserver(() => chart.resize());
     observer.observe(el);
     return () => {
       observer.disconnect();
       chart.dispose();
     };
-  }, [easy, dark]);
+  }, [easy, option, dark]);
 
   return <div ref={ref} className="easy-chart" />;
+}
+
+/** The common guide for an aerobically durable run, in percent. Context only: no run is flagged for being above it. */
+const DURABLE_GUIDE = 5;
+
+/**
+ * Aerobic Decoupling over time for every Easy Run and Long Run that has one, with each Run Type's 6-Training-Week trend
+ * and its change in a headline, and a reference line at the 5% guide.
+ */
+export function AerobicDecouplingChart({ easy }: { easy: EasyTrend }) {
+  if (easy.runs.length === 0) return <p className="rest">No Easy Runs or Long Runs yet</p>;
+  if (easy.runs.every((r) => r.aerobicDecoupling === null)) {
+    return <p className="rest">No Easy Run or Long Run has an Aerobic Decoupling yet: it needs 40 minutes of moving time, heart rate and grade-adjusted speed</p>;
+  }
+  return (
+    <section className="easy">
+      <TrendHeadlines runs={easy.runs} trends={easy.aerobicDecouplingTrends} change={aerobicDecouplingChange} />
+      <Chart easy={easy} option={aerobicDecouplingChartOption} />
+    </section>
+  );
+}
+
+/** The trend line's change in percentage points; negative is more aerobically durable. */
+function aerobicDecouplingChange(trend: EasyRunTrend): string {
+  if (trend.line === null) return "Not enough data";
+  return `${formatAerobicDecouplingChange(trend.line.end - trend.line.start)} over 6 weeks`;
 }
 
 interface ChartColors {
@@ -123,7 +167,7 @@ const runTypesIn = (runs: EasyTrendRun[]) =>
  * markers off the line, and each trend line; minutes walked per run below on the same time axis.
  */
 function chartOption(easy: EasyTrend, c: ChartColors): echarts.EChartsCoreOption {
-  const { runs, trends, referenceHr } = easy;
+  const { runs, easyPaceTrends: trends, referenceHr } = easy;
   const byId = new Map(runs.map((r) => [r.activityId, r]));
   const times = runs.map((r) => time(r.date));
   const axisLabel = { color: c.muted, fontSize: 11 };
@@ -272,6 +316,140 @@ function chartOption(easy: EasyTrend, c: ChartColors): echarts.EChartsCoreOption
   };
 }
 
+/**
+ * Aerobic Decoupling, higher being less aerobically durable, with one line per Run Type through the runs that count,
+ * Grey Zone Runs as hollow markers off the line, each trend line, and a dotted line at the 5% guide.
+ */
+function aerobicDecouplingChartOption(easy: EasyTrend, c: ChartColors): echarts.EChartsCoreOption {
+  const { aerobicDecouplingTrends: trends } = easy;
+  const runs = easy.runs.filter((r) => r.aerobicDecoupling !== null);
+  const byId = new Map(runs.map((r) => [r.activityId, r]));
+  const times = runs.map((r) => time(r.date));
+  const axisLabel = { color: c.muted, fontSize: 11 };
+  const symbolSize = (t: EasyRunType) => (t === "Long Run" ? 11 : 8);
+  const aerobicDecoupling = (r: EasyTrendRun) => r.aerobicDecoupling!;
+  /** A run's point, ringed in red when the run was Over Target. */
+  const point = (r: EasyTrendRun) => ({
+    value: [time(r.date), aerobicDecoupling(r)],
+    id: r.activityId,
+    ...(r.overTarget && { itemStyle: { borderColor: c.overTarget, borderWidth: 3 } }),
+  });
+  const types = runTypesIn(runs);
+  const hasOverTarget = runs.some((r) => r.overTarget && !r.greyZone);
+  const hasGreyZone = runs.some((r) => r.greyZone);
+
+  return {
+    animation: false,
+    textStyle: { fontFamily: "system-ui, sans-serif" },
+    legend: {
+      top: 0,
+      left: 0,
+      data: [...types, "Trend", ...(hasOverTarget ? ["Over Target"] : []), ...(hasGreyZone ? ["Grey Zone Run"] : [])],
+      selectedMode: false,
+      textStyle: { color: c.muted },
+      itemWidth: 22,
+    },
+    tooltip: {
+      trigger: "item",
+      backgroundColor: c.surface,
+      borderColor: c.grid,
+      textStyle: { color: c.text },
+      formatter: (params: { data: { id?: string } }) => runTooltip(params.data.id ? byId.get(params.data.id) : undefined),
+    },
+    grid: { left: 48, right: 16, top: 64, bottom: 28 },
+    xAxis: {
+      type: "time",
+      min: Math.min(...times) - DAY_MS,
+      max: Math.max(...times) + DAY_MS,
+      minInterval: DAY_MS,
+      axisLabel: { ...axisLabel, hideOverlap: true, formatter: (v: number) => formatDate(new Date(v).toLocaleDateString("en-CA")) },
+      axisLine: { lineStyle: { color: c.grid } },
+      axisTick: { show: false },
+      splitLine: { show: false },
+    },
+    yAxis: {
+      type: "value",
+      name: "Aerobic Decoupling",
+      nameTextStyle: { color: c.muted, fontSize: 11, align: "left", padding: [0, 0, 0, -40] },
+      nameLocation: "start",
+      // Always wide enough to show the 5% guide.
+      min: ({ min }: { min: number }) => Math.floor(Math.min(min, 0)),
+      max: ({ max }: { max: number }) => Math.ceil(Math.max(max, DURABLE_GUIDE + 1)),
+      axisLabel: { ...axisLabel, formatter: (v: number) => `${v}%` },
+      splitLine: { lineStyle: { color: c.grid } },
+      splitNumber: 4,
+    },
+    series: [
+      ...types.flatMap((t) => {
+        const ofType = runs.filter((r) => r.runType === t);
+        const style = RUN_TYPE_STYLE[t];
+        const line = trends[t].line;
+        return [
+          {
+            name: t,
+            type: "line",
+            data: ofType.filter((r) => !r.greyZone).map(point),
+            color: c.pace,
+            symbol: style.symbol,
+            symbolSize: symbolSize(t),
+            itemStyle: { borderColor: c.surface, borderWidth: 1 },
+            lineStyle: { width: 2, type: style.line },
+            emphasis: { disabled: true },
+          },
+          {
+            name: "Grey Zone Run",
+            type: "scatter",
+            data: ofType.filter((r) => r.greyZone).map((r) => ({ value: [time(r.date), aerobicDecoupling(r)], id: r.activityId })),
+            symbol: style.symbol,
+            symbolSize: symbolSize(t),
+            itemStyle: { color: c.surface, borderColor: c.pace, borderWidth: 2 },
+            emphasis: { disabled: true },
+          },
+          {
+            name: "Trend",
+            type: "line",
+            data:
+              line === null
+                ? []
+                : [
+                    [time(trends[t].from), line.start],
+                    [time(trends[t].to), line.end],
+                  ],
+            color: c.trend,
+            symbol: "none",
+            silent: true,
+            lineStyle: { width: 2, type: style.line },
+            tooltip: { show: false },
+          },
+        ];
+      }),
+      /** No points of its own: it puts the red ring that marks Over Target runs in the legend. */
+      {
+        name: "Over Target",
+        type: "scatter",
+        data: [],
+        symbolSize: 9,
+        itemStyle: { color: c.surface, borderColor: c.overTarget, borderWidth: 2 },
+      },
+      /** The 5% guide across the chart, context only: no run is marked for being above it. */
+      {
+        name: "Guide",
+        type: "line",
+        data: [
+          [Math.min(...times) - DAY_MS, DURABLE_GUIDE],
+          [Math.max(...times) + DAY_MS, DURABLE_GUIDE],
+        ],
+        color: c.muted,
+        symbol: "none",
+        silent: true,
+        lineStyle: { width: 1, type: "dotted" },
+        endLabel: { show: true, color: c.muted, fontSize: 11, offset: [-48, -10], formatter: `${DURABLE_GUIDE}% guide` },
+        tooltip: { show: false },
+      },
+    ],
+  };
+}
+
 function runTooltip(r: EasyTrendRun | undefined): string {
   if (!r) return "";
   const lines = [`<strong>${formatDate(r.date)}</strong> · ${r.runType}`, escapeHtml(r.name)];
@@ -279,6 +457,7 @@ function runTooltip(r: EasyTrendRun | undefined): string {
   if (r.easyGap !== null) lines.push(`Easy GAP ${formatPace(r.easyGap)}`);
   if (r.easyHr !== null) lines.push(`Easy HR ${formatHr(r.easyHr)}`);
   if (r.walkBreakTime !== null) lines.push(`walked ${formatDuration(r.walkBreakTime)}`);
+  lines.push(`Aerobic Decoupling ${formatAerobicDecoupling(r.aerobicDecoupling)}`);
   lines.push(hrCheck(r));
   return lines.join("<br>");
 }
@@ -308,6 +487,7 @@ function EasyTable({ runs }: { runs: EasyTrendRun[] }) {
             <th>Easy GAP</th>
             <th>Easy HR</th>
             <th>Walked</th>
+            <th>Aerobic Decoupling</th>
             <th>Above target</th>
           </tr>
         </thead>
@@ -320,6 +500,7 @@ function EasyTable({ runs }: { runs: EasyTrendRun[] }) {
               <td>{r.easyGap === null ? "–" : formatPace(r.easyGap)}</td>
               <td>{r.easyHr === null ? "–" : formatHr(r.easyHr)}</td>
               <td>{r.walkBreakTime === null ? "–" : formatDuration(r.walkBreakTime)}</td>
+              <td>{formatAerobicDecoupling(r.aerobicDecoupling)}</td>
               <td>
                 {r.timeAboveTarget === null ? "–" : timeAbove(r.timeAboveTarget)}
                 {r.greyZone ? (

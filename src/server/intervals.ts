@@ -240,7 +240,7 @@ export function intervalsAnalyzedAt(response: unknown): string | null {
 
 /**
  * An Activity's streams, read from its `GET /activity/{id}/streams` response. Null when it has no time stream, as when
- * it was not fetched; a heart-rate, cadence or speed stream not recorded is null on its own.
+ * it was not fetched; a heart-rate, cadence, speed or grade-adjusted speed stream not recorded is null on its own.
  */
 export function activityStreams(response: unknown): ActivityStreams | null {
   const list = Array.isArray(response) ? (response as { type?: unknown; data?: unknown }[]) : [];
@@ -250,12 +250,27 @@ export function activityStreams(response: unknown): ActivityStreams | null {
   };
   const time = stream("time");
   if (time === null || time.some((t) => t === null)) return null;
-  return { time: time as number[], heartrate: stream("heartrate"), cadence: stream("cadence"), velocity: stream("velocity_smooth") };
+  return {
+    time: time as number[],
+    heartrate: stream("heartrate"),
+    cadence: stream("cadence"),
+    velocity: stream("velocity_smooth"),
+    gradeAdjustedVelocity: stream("ga_velocity"),
+  };
 }
 
 /** Whether a stored streams response was fetched with a speed stream, which Training Load leaves stopped time out by. */
 export function hasSpeedStream(response: unknown): boolean {
-  return Array.isArray(response) && response.some((s: { type?: unknown }) => s?.type === "velocity_smooth");
+  return hasStream(response, "velocity_smooth");
+}
+
+/** Whether a stored streams response was fetched with a grade-adjusted speed stream, which Aerobic Decoupling needs. */
+export function hasGradeAdjustedSpeedStream(response: unknown): boolean {
+  return hasStream(response, "ga_velocity");
+}
+
+function hasStream(response: unknown, type: string): boolean {
+  return Array.isArray(response) && response.some((s: { type?: unknown }) => s?.type === type);
 }
 
 /**
@@ -308,7 +323,7 @@ export interface IntervalsClient {
   activity(activityId: string): Promise<IntervalsActivity | null>;
   /** The intervals intervals.icu detected in one Activity; read it with `detectedIntervals`. */
   intervals(activityId: string): Promise<unknown>;
-  /** One Activity's time, heart-rate, cadence and speed streams; read them with `activityStreams`. */
+  /** One Activity's time, heart-rate, cadence, speed and grade-adjusted speed streams; read them with `activityStreams`. */
   streams(activityId: string): Promise<unknown>;
   /** The athlete with their sport settings; read it with `runThresholdPace`, `runMaxHr` and `runLthr`. */
   athlete(): Promise<unknown>;
@@ -327,7 +342,7 @@ export interface IntervalsClient {
 const ERROR_BODY_CHARS = 200;
 const NOT_FOUND = 404;
 /** The streams fetched for every Activity and Cross-Training workout. */
-const STREAM_TYPES = "time,heartrate,cadence,velocity_smooth";
+const STREAM_TYPES = "time,heartrate,cadence,velocity_smooth,ga_velocity";
 
 export function createIntervalsClient(athleteId: string, apiKey: string): IntervalsClient {
   const athlete = `athlete/${encodeURIComponent(athleteId)}`;

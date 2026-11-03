@@ -13,7 +13,7 @@ import type {
   WeekResponse,
 } from "../server/app";
 import { getJson } from "./api";
-import { EasyChart } from "./EasyChart";
+import { AerobicDecouplingChart, EasyChart } from "./EasyChart";
 import { FitnessChart } from "./FitnessChart";
 import { PlanPage } from "./PlanPage";
 import { navigate, PAGE_PATHS, usePage, type Page } from "./router";
@@ -143,6 +143,9 @@ function ProgressPage() {
 
       <h1 className="section-title">Easy Pace</h1>
       <EasyChart easy={easy} />
+
+      <h1 className="section-title">Aerobic Decoupling</h1>
+      <AerobicDecouplingChart easy={easy} />
 
       <h1 className="section-title">{isThisWeek ? "This Training Week" : "Training Week"}</h1>
       <div className="week-nav">

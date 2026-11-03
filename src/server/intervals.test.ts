@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { WeekPlanDay } from "../domain/weekPlan";
-import { activityAverages, plannedRecovery, runLthr, runThresholdPace, weekPlanDay, type IntervalsEvent } from "./intervals";
+import { activityAverages, activityStreams, plannedRecovery, runLthr, runThresholdPace, weekPlanDay, type IntervalsEvent } from "./intervals";
 
 describe("activityAverages", () => {
   it("is an Activity's whole-run Easy GAP and Easy HR", () => {
@@ -32,6 +32,25 @@ const fourBySix = {
   ],
   duration: 3600,
 };
+
+describe("activityStreams", () => {
+  it("reads the grade-adjusted speed stream, null on its own when not fetched", () => {
+    const response = [
+      { type: "time", data: [0, 1] },
+      { type: "heartrate", data: [140, 141] },
+      { type: "velocity_smooth", data: [3, 3.1] },
+      { type: "ga_velocity", data: [3.2, null] },
+    ];
+    expect(activityStreams(response)).toEqual({
+      time: [0, 1],
+      heartrate: [140, 141],
+      cadence: null,
+      velocity: [3, 3.1],
+      gradeAdjustedVelocity: [3.2, null],
+    });
+    expect(activityStreams(response.slice(0, 3))!.gradeAdjustedVelocity).toBeNull();
+  });
+});
 
 describe("plannedRecovery", () => {
   it("is the recovery between Reps in a Planned Workout's structure (4 x 6:00 with 1:30 recoveries)", () => {

@@ -1,3 +1,4 @@
+import { aerobicDecoupling } from "./aerobicDecoupling";
 import { shareAbove, walkBreakTime, type ActivityStreams } from "./activityStreams";
 import { addDays, daysBetween } from "./localDate";
 import { matchActivities, type Activity, type PlannedWorkout } from "./matching";
@@ -38,6 +39,8 @@ export interface EasyTrendRun extends EasyAverages {
   easyPace: number | null;
   /** Seconds walked in Walk Breaks; null without a cadence stream. */
   walkBreakTime: number | null;
+  /** Aerobic Decoupling as a percentage; null when the run is too short or lacks the streams for one. */
+  aerobicDecoupling: number | null;
   /** The top of the run's Easy HR Target in bpm; null without Max HR or an Easy HR Target. */
   easyHrTargetTop: number | null;
   /** The share of moving time above `easyHrTargetTop`, 0 to 1; null without it or a heart-rate stream. */
@@ -48,15 +51,15 @@ export interface EasyTrendRun extends EasyAverages {
   greyZone: boolean;
 }
 
-/** One Run Type's Easy Pace trend over the last 6 Training Weeks. */
-export interface EasyPaceTrend {
+/** One Run Type's trend of a number each run has, Easy Pace or Aerobic Decoupling, over the last 6 Training Weeks. */
+export interface EasyRunTrend {
   /** The Monday starting the window, YYYY-MM-DD. */
   from: string;
   /** Today, the window's end, YYYY-MM-DD. */
   to: string;
   /**
-   * The Easy Pace, in metres per second, that a straight line fitted by least squares to the window's runs gives at
-   * `from` and at `to`; null, Not enough data, with fewer than 3 runs.
+   * The number, in its own units, that a straight line fitted by least squares to the window's runs gives at `from`
+   * and at `to`; null, Not enough data, with fewer than 3 runs.
    */
   line: { start: number; end: number } | null;
   /** Grey Zone Runs in the window, left out of the line. */
@@ -71,7 +74,10 @@ export interface EasyTrend {
   referenceHr: number | null;
   /** Every Matched Easy Run and Long Run, oldest first. */
   runs: EasyTrendRun[];
-  trends: Record<EasyRunType, EasyPaceTrend>;
+  /** Each Run Type's Easy Pace trend, in metres per second. */
+  easyPaceTrends: Record<EasyRunType, EasyRunTrend>;
+  /** Each Run Type's Aerobic Decoupling trend, in percent; it counts the same runs as Easy Pace's. */
+  aerobicDecouplingTrends: Record<EasyRunType, EasyRunTrend>;
 }
 
 /** Training Weeks before this one that the trend also reads. */
@@ -112,6 +118,7 @@ export function easyTrend(planned: EasyPlannedWorkout[], activities: EasyActivit
           easyHr: a.easyHr,
           easyPace: easyPace(a, referenceHr),
           walkBreakTime: a.streams === null ? null : walkBreakTime(a.streams),
+          aerobicDecoupling: a.streams === null ? null : aerobicDecoupling(a.streams),
           easyHrTargetTop,
           timeAboveTarget: above,
           overTarget: above !== null && above > OVER_TARGET_SHARE,
@@ -121,35 +128,50 @@ export function easyTrend(planned: EasyPlannedWorkout[], activities: EasyActivit
     })
     .sort((x, y) => x.date.localeCompare(y.date));
   const from = addDays(weekStart(today), -7 * TREND_WEEKS_BEFORE);
-  const trend = (type: EasyRunType) => paceTrend(runs.filter((r) => r.runType === type), from, today);
-  return { referenceHr, runs, trends: { "Easy Run": trend("Easy Run"), "Long Run": trend("Long Run") } };
+  const byType = (fit: (runs: EasyTrendRun[]) => EasyRunTrend) => ({
+    "Easy Run": fit(runs.filter((r) => r.runType === "Easy Run")),
+    "Long Run": fit(runs.filter((r) => r.runType === "Long Run")),
+  });
+  return {
+    referenceHr,
+    runs,
+    // Pace is fitted in seconds per mile, the way it is charted; they convert to metres per second the same way back.
+    easyPaceTrends: byType((ofType) => trend(ofType, from, today, (r) => (r.easyPace === null ? null : secondsPerMile(r.easyPace)), secondsPerMile)),
+    aerobicDecouplingTrends: byType((ofType) => trend(ofType, from, today, (r) => r.aerobicDecoupling, (v) => v)),
+  };
 }
 
 /**
- * The trend of `runs` from `from` through `to`, fitted in seconds per mile, the way pace is charted.
- * Runs before `from` and Grey Zone Runs do not count.
+ * The trend of `value` over `runs` from `from` through `to`, fitted to `value` and read back through `unfit`.
+ * Runs before `from`, Grey Zone Runs and runs without a value do not count.
  */
-function paceTrend(runs: EasyTrendRun[], from: string, to: string): EasyPaceTrend {
+function trend(
+  runs: EasyTrendRun[],
+  from: string,
+  to: string,
+  value: (run: EasyTrendRun) => number | null,
+  unfit: (fitted: number) => number,
+): EasyRunTrend {
   const inWindow = runs.filter((r) => r.date >= from && r.date <= to);
   const greyZoneRuns = inWindow.filter((r) => r.greyZone).length;
-  const points = inWindow
-    .filter((r) => !r.greyZone && r.easyPace !== null)
-    .map((r) => ({ day: daysBetween(from, r.date), pace: secondsPerMile(r.easyPace!) }));
+  const points = inWindow.flatMap((r) => {
+    const v = r.greyZone ? null : value(r);
+    return v === null ? [] : [{ day: daysBetween(from, r.date), value: v }];
+  });
   const line = points.length < MIN_TREND_RUNS ? null : leastSquares(points);
   if (line === null) return { from, to, line: null, greyZoneRuns };
-  // Seconds per mile and metres per second convert the same way in both directions.
-  const at = (day: number) => secondsPerMile(line.intercept + line.slope * day);
+  const at = (day: number) => unfit(line.intercept + line.slope * day);
   return { from, to, line: { start: at(0), end: at(daysBetween(from, to)) }, greyZoneRuns };
 }
 
-function leastSquares(points: { day: number; pace: number }[]): { intercept: number; slope: number } | null {
+function leastSquares(points: { day: number; value: number }[]): { intercept: number; slope: number } | null {
   const n = points.length;
   const meanDay = points.reduce((sum, p) => sum + p.day, 0) / n;
-  const meanPace = points.reduce((sum, p) => sum + p.pace, 0) / n;
+  const meanValue = points.reduce((sum, p) => sum + p.value, 0) / n;
   const spread = points.reduce((sum, p) => sum + (p.day - meanDay) ** 2, 0);
   if (spread === 0) return null;
-  const slope = points.reduce((sum, p) => sum + (p.day - meanDay) * (p.pace - meanPace), 0) / spread;
-  return { intercept: meanPace - slope * meanDay, slope };
+  const slope = points.reduce((sum, p) => sum + (p.day - meanDay) * (p.value - meanValue), 0) / spread;
+  return { intercept: meanValue - slope * meanDay, slope };
 }
 
 /** The Easy HR Target of the most recent Easy Run or Long Run planned on or before `today`; null when none names one. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { garminNotice, thresholdChangeText } from "./format";
+import { formatAerobicDecoupling, formatAerobicDecouplingChange, garminNotice, thresholdChangeText } from "./format";
 
 const since = "2026-11-02T08:00:00";
 
@@ -23,5 +23,22 @@ describe("thresholdChangeText", () => {
     expect(thresholdChangeText({ at: since, lthr: null, maxHr: { from: null, to: 194 } })).toBe(
       "Max HR set to 194 from Garmin, 2 Nov",
     );
+  });
+});
+
+describe("formatAerobicDecoupling", () => {
+  it("shows a run's Aerobic Decoupling to one decimal place, with a minus sign when negative, or a dash", () => {
+    expect(formatAerobicDecoupling(3.84)).toBe("3.8%");
+    expect(formatAerobicDecoupling(-1.25)).toBe("−1.3%");
+    expect(formatAerobicDecoupling(-0.01)).toBe("0.0%");
+    expect(formatAerobicDecoupling(null)).toBe("–");
+  });
+});
+
+describe("formatAerobicDecouplingChange", () => {
+  it("shows a change in percentage points with its sign", () => {
+    expect(formatAerobicDecouplingChange(-1.44)).toBe("−1.4 pts");
+    expect(formatAerobicDecouplingChange(0.96)).toBe("+1.0 pts");
+    expect(formatAerobicDecouplingChange(0.04)).toBe("±0.0 pts");
   });
 });

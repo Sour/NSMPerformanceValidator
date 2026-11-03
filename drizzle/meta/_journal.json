@@ -64,6 +64,13 @@
       "when": 1793681215809,
       "tag": "0008_garmin_sync",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1793726173965,
+      "tag": "0009_grade_adjusted_speed_streams",
+      "breakpoints": true
     }
   ]
 }

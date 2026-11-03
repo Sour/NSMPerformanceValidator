@@ -122,12 +122,18 @@ function streamsResponse(activityId: string) {
     { type: "heartrate", data: [130, 131, 132] },
     { type: "cadence", data: [80, 81, 80] },
     { type: "velocity_smooth", data: [2.5, 2.6, 2.5] },
+    { type: "ga_velocity", data: [2.6, 2.6, 2.5] },
   ];
 }
 
-/** As stored before streams were fetched with speed. */
+/** As stored before streams were fetched with speed, and so without grade-adjusted speed. */
 function streamsWithoutSpeed(activityId: string) {
-  return streamsResponse(activityId).filter((s) => s.type !== "velocity_smooth");
+  return streamsResponse(activityId).filter((s) => s.type !== "velocity_smooth" && s.type !== "ga_velocity");
+}
+
+/** As stored before streams were fetched with grade-adjusted speed. */
+function streamsWithoutGradeAdjustedSpeed(activityId: string) {
+  return streamsResponse(activityId).filter((s) => s.type !== "ga_velocity");
 }
 
 function wellnessResponse(date: string) {
@@ -429,6 +435,36 @@ describe("sync after an upgrade", () => {
 
     // intervals.icu has no speed for some workouts, such as a lift, so theirs still have none after.
     for (const id of ["i1", "i2"]) saveStreams(db, id, streamsWithoutSpeed(id));
+    const next = fakeClient(events, activities);
+    await sync(db, next, "2026-10-27");
+    expect(next.requests.filter((r) => r.startsWith("streams"))).toEqual([]);
+  });
+
+  it("re-fetches, once, stored streams without a grade-adjusted speed stream, Cross-Training included", async () => {
+    const db = openDb(":memory:");
+    saveSync(
+      db,
+      { from: "2026-09-29", to: "2026-11-17" },
+      events.slice(1, 3),
+      activities.slice(1, 3),
+      new Map(),
+      { finishedAt: "2026-10-20T12:00:00.000Z", syncedThrough: "2026-10-20" },
+      new Map(["i1", "i2", "walk"].map((id) => [id, streamsWithoutGradeAdjustedSpeed(id)])),
+      activities.slice(3, 4),
+      "2026-09-29",
+    );
+    saveSyncBackfills(db, { crossTrainingFrom: "2026-09-29", speedStreams: true });
+    // The sync itself only fetches workouts from 2026-10-13 on, so these requests are the backfill's.
+    const client = fakeClient(events, activities);
+
+    await sync(db, client, "2026-10-26");
+
+    expect(client.requests.filter((r) => r.startsWith("streams"))).toEqual(["streams i1", "streams i2", "streams walk"]);
+    expect(loadActivities(db).map((a) => a.streams)).toEqual([streamsResponse("i1"), streamsResponse("i2")]);
+    expect(loadCrossTraining(db).map((a) => a.streams)).toEqual([streamsResponse("walk")]);
+
+    // intervals.icu has no grade-adjusted speed for some workouts, so theirs still have none after.
+    for (const id of ["i1", "i2", "walk"]) saveStreams(db, id, streamsWithoutGradeAdjustedSpeed(id));
     const next = fakeClient(events, activities);
     await sync(db, next, "2026-10-27");
     expect(next.requests.filter((r) => r.startsWith("streams"))).toEqual([]);

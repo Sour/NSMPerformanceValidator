@@ -32,6 +32,19 @@ export function formatHr(bpm: number): string {
   return `${Math.round(bpm)} bpm`;
 }
 
+/** A run's Aerobic Decoupling to one decimal place, e.g. "3.8%" or "−1.2%"; "–" when it has none. */
+export function formatAerobicDecoupling(percent: number | null): string {
+  if (percent === null) return "–";
+  const rounded = percent.toFixed(1);
+  return `${Number(rounded) < 0 ? "−" : ""}${Math.abs(Number(rounded)).toFixed(1)}%`;
+}
+
+/** A change in Aerobic Decoupling in percentage points, e.g. "−1.4 pts"; negative is more aerobically durable. */
+export function formatAerobicDecouplingChange(points: number): string {
+  const rounded = Number(points.toFixed(1));
+  return `${rounded > 0 ? "+" : rounded < 0 ? "−" : "±"}${Math.abs(rounded).toFixed(1)} pts`;
+}
+
 /** Text made safe to put in a chart tooltip's HTML. */
 export function escapeHtml(text: string): string {
   return text.replace(/[&<>"]/g, (ch) => `&#${ch.charCodeAt(0)};`);
